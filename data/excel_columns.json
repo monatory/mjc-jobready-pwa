@@ -1,0 +1,62 @@
+{
+  "version": "0.1-draft",
+  "note": "Excel 5개 Sheet 컬럼 정의 — 계획서 §6-2. xlsx 다중 시트 1파일 생성 시 이 정의를 사용(코드 하드코딩 금지). 최종 컬럼은 센터 확정 필요(체크리스트 09).",
+  "sheets": {
+    "01_학생상태": [
+      { "key": "student_id", "label": "학번" },
+      { "key": "name", "label": "성명" },
+      { "key": "dept", "label": "학과" },
+      { "key": "grade", "label": "학년" },
+      { "key": "semester", "label": "학기" },
+      { "key": "career_direction", "label": "진로방향" },
+      { "key": "jas", "label": "구직활성도(JAS)" },
+      { "key": "jrs", "label": "취업준비도(JRS)" },
+      { "key": "cds", "label": "진로발달도(CDS)" },
+      { "key": "level", "label": "Level" },
+      { "key": "route_tag", "label": "Route" },
+      { "key": "employment_timing", "label": "취업 희망시기" },
+      { "key": "desired_job", "label": "희망직무" },
+      { "key": "region", "label": "희망지역" },
+      { "key": "counsel_wish", "label": "상담희망" },
+      { "key": "consent_view", "label": "정보열람동의" }
+    ],
+    "02_설문원자료": [
+      { "key": "student_id", "label": "학번" },
+      { "key": "semester", "label": "학기" },
+      { "key": "item_key", "label": "설문항목" },
+      { "key": "answer_value", "label": "응답값(코드)" },
+      { "key": "answer_label", "label": "응답값(표시)" },
+      { "key": "answered_at", "label": "응답일시" },
+      { "key": "updated_at", "label": "수정일시" },
+      { "key": "survey_version", "label": "설문버전" }
+    ],
+    "03_자격증현황": [
+      { "key": "student_id", "label": "학번" },
+      { "key": "cert_name", "label": "자격증명" },
+      { "key": "category", "label": "분류" },
+      { "key": "status", "label": "상태(보유/준비/목표)" },
+      { "key": "target_or_acquired_date", "label": "취득/목표일" },
+      { "key": "memo", "label": "비고" }
+    ],
+    "04_진단점수": [
+      { "key": "student_id", "label": "학번" },
+      { "key": "semester", "label": "학기" },
+      { "key": "question_id", "label": "문항ID" },
+      { "key": "domain", "label": "영역" },
+      { "key": "raw_score", "label": "원점수(1~5)" },
+      { "key": "domain_avg", "label": "영역평균" },
+      { "key": "gate_passed", "label": "Gate 통과여부" },
+      { "key": "critical_unmet", "label": "Critical 미충족" },
+      { "key": "diagnostic_version", "label": "진단버전" }
+    ],
+    "05_추천활동": [
+      { "key": "student_id", "label": "학번" },
+      { "key": "recommendation_code", "label": "추천코드" },
+      { "key": "activity_name", "label": "활동명" },
+      { "key": "owner", "label": "담당" },
+      { "key": "priority", "label": "우선순위" },
+      { "key": "active", "label": "활성여부" },
+      { "key": "counsel_status", "label": "상담연계 상태" }
+    ]
+  }
+}

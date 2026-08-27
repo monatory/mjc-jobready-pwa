@@ -1,0 +1,186 @@
+{
+  "version": "0.1-draft",
+  "note": "Recommendation Master 초기 목록(시드) — 운영 중에는 Firestore recommendationMaster가 진실 기준, 이 파일은 초기 등록용. 활동명·기간은 센터 확정 필요(체크리스트 08).",
+  "activities": [
+    {
+      "recommendation_code": "CAREER_CONSULT_JOBCAFE",
+      "name": "잡카페 진로컨설턴트 상담",
+      "owner": "CAREER",
+      "levels": [
+        1,
+        2
+      ],
+      "weak_domains": [
+        "SELF",
+        "CAREER_DIR",
+        "ANY"
+      ],
+      "priority": 1,
+      "student_desc": "진로 방향이 고민될 때 잡카페 진로컨설턴트와 1:1 상담으로 정리해 보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "EMP_CONSULT_JOBCAFE",
+      "name": "잡카페 취업컨설턴트 상담",
+      "owner": "EMPLOYMENT",
+      "levels": [
+        3,
+        4
+      ],
+      "weak_domains": [
+        "JOB_READY",
+        "ANY"
+      ],
+      "priority": 1,
+      "student_desc": "취업 준비 전략을 잡카페 취업컨설턴트와 함께 구체화해 보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "SELF_UNDERSTANDING_TEST",
+      "name": "직업심리검사·자기이해 워크숍",
+      "owner": "CAREER",
+      "levels": [
+        1,
+        2
+      ],
+      "weak_domains": [
+        "SELF"
+      ],
+      "priority": 2,
+      "student_desc": "직업심리검사로 나의 흥미·강점을 확인하고 진로 탐색의 출발점을 만들어 보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "JOB_TARGET_SETTING",
+      "name": "잡카페 직무탐색 상담",
+      "owner": "CAREER",
+      "levels": [
+        2,
+        3
+      ],
+      "weak_domains": [
+        "JOB_INFO",
+        "JOB_READY"
+      ],
+      "priority": 2,
+      "student_desc": "희망직무를 1~2개로 구체화하고 준비계획을 세워보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "JOB_POSTING_ANALYSIS",
+      "name": "희망직무 채용공고 5건 분석",
+      "owner": "EMPLOYMENT",
+      "levels": [
+        2,
+        3,
+        4
+      ],
+      "weak_domains": [
+        "JOB_INFO",
+        "JOB_READY"
+      ],
+      "priority": 3,
+      "student_desc": "희망직무의 실제 채용공고 5건을 찾아 지원자격·우대사항을 내 준비 상태와 비교해 보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "RESUME_BASIC",
+      "name": "기본 입사지원서(이력서·자소서) 작성 특강",
+      "owner": "EMPLOYMENT",
+      "levels": [
+        3,
+        4
+      ],
+      "weak_domains": [
+        "JOB_READY"
+      ],
+      "priority": 2,
+      "student_desc": "이력서·자기소개서 기본 틀을 완성해 두면 채용공고가 떴을 때 바로 지원할 수 있어요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "MOCK_INTERVIEW",
+      "name": "모의면접 프로그램",
+      "owner": "EMPLOYMENT",
+      "levels": [
+        4
+      ],
+      "weak_domains": [
+        "JOB_READY",
+        "ANY"
+      ],
+      "priority": 3,
+      "student_desc": "실전과 같은 모의면접으로 면접 답변을 다듬어 보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "CERT_PLANNING",
+      "name": "자격증·직무역량 준비 계획 상담",
+      "owner": "CAREER",
+      "levels": [
+        2,
+        3
+      ],
+      "weak_domains": [
+        "COMPETENCY",
+        "JOB_INFO"
+      ],
+      "priority": 3,
+      "student_desc": "희망 직무에 필요한 자격증과 준비 순서를 상담으로 정리해 보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "GOV_PROGRAM_LINK",
+      "name": "정부 취업지원 제도 연계 안내",
+      "owner": "EMPLOYMENT",
+      "levels": [
+        3,
+        4
+      ],
+      "weak_domains": [
+        "COMPETENCY",
+        "JOB_READY",
+        "ANY"
+      ],
+      "priority": 4,
+      "student_desc": "국민취업지원제도 등 정부 지원과 연계하면 준비 비용·훈련 기회를 넓힐 수 있어요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    },
+    {
+      "recommendation_code": "MAJOR_LINK_EXPLORE",
+      "name": "전공연계 진로탐색 프로그램",
+      "owner": "CAREER",
+      "levels": [
+        1,
+        2
+      ],
+      "weak_domains": [
+        "CAREER_DIR",
+        "JOB_INFO"
+      ],
+      "priority": 3,
+      "student_desc": "내 전공이 이어지는 직무·산업을 살펴보고 전공진출/방향전환을 판단해 보세요.",
+      "active_from": "2026-08-01",
+      "active_to": "2026-12-31",
+      "active": true
+    }
+  ]
+}

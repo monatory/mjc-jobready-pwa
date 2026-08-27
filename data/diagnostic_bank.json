@@ -1,0 +1,53 @@
+{
+  "version": "MJC-CDI-0.1-draft",
+  "note": "보조 진단문항 27개 초안 — 5점 척도(전혀 그렇지 않다~매우 그렇다). 전문가 검토(§10 절차 1) 전 초안이며 문항 텍스트·weight는 검토 후 확정. Level 판정의 절대 주체가 아닌 보조 진단(취약영역 설명·추천 세분화).",
+  "scale": [
+    { "value": 1, "label": "전혀 그렇지 않다" },
+    { "value": 2, "label": "그렇지 않다" },
+    { "value": 3, "label": "보통이다" },
+    { "value": 4, "label": "그렇다" },
+    { "value": 5, "label": "매우 그렇다" }
+  ],
+  "domains": {
+    "SELF": "자기이해",
+    "CAREER_DIR": "진로방향",
+    "JOB_INFO": "직무정보",
+    "COMPETENCY": "역량준비",
+    "ACTION": "실행행동",
+    "JOB_READY": "구직준비"
+  },
+  "items": [
+    { "id": "SF01", "domain": "SELF", "sub_domain": "강점 인식", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "SELF_UNDERSTANDING_TEST", "text": "나는 내가 잘하는 것과 못하는 것을 구체적으로 말할 수 있다." },
+    { "id": "SF02", "domain": "SELF", "sub_domain": "흥미 인식", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "SELF_UNDERSTANDING_TEST", "text": "나는 어떤 일을 할 때 즐거움을 느끼는지 알고 있다." },
+    { "id": "SF03", "domain": "SELF", "sub_domain": "가치관 인식", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "SELF_UNDERSTANDING_TEST", "text": "직업을 고를 때 내가 중요하게 여기는 기준(보수·안정·성장 등)이 분명하다." },
+    { "id": "SF04", "domain": "SELF", "sub_domain": "성격·직무 적합", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "CAREER_CONSULT_JOBCAFE", "text": "내 성격이 어떤 일하는 방식과 잘 맞는지 알고 있다." },
+
+    { "id": "CD01", "domain": "CAREER_DIR", "sub_domain": "진로목표 명확성", "weight": 1.2, "gate": "G2", "critical": true, "filter_code": null, "action_code": "CAREER_CONSULT_JOBCAFE", "text": "나는 졸업 후 어떤 진로로 갈지 방향을 정해 두었다." },
+    { "id": "CD02", "domain": "CAREER_DIR", "sub_domain": "진로 확신", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "CAREER_CONSULT_JOBCAFE", "text": "지금 생각하는 진로 방향에 확신이 있다." },
+    { "id": "CD03", "domain": "CAREER_DIR", "sub_domain": "전공연계 판단", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "MAJOR_LINK_EXPLORE", "text": "내 전공을 살릴지, 다른 분야로 갈지 판단이 서 있다." },
+    { "id": "CD04", "domain": "CAREER_DIR", "sub_domain": "진로 대안", "weight": 0.8, "gate": null, "critical": false, "filter_code": null, "action_code": "CAREER_CONSULT_JOBCAFE", "text": "1순위 진로가 어려울 때를 대비한 다른 선택지도 생각해 두었다." },
+
+    { "id": "JI01", "domain": "JOB_INFO", "sub_domain": "직무 이해", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "JOB_TARGET_SETTING", "text": "관심 있는 직무가 실제로 어떤 일을 하는지 알고 있다." },
+    { "id": "JI02", "domain": "JOB_INFO", "sub_domain": "산업·기업 정보", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "JOB_POSTING_ANALYSIS", "text": "관심 분야의 회사들이 어떤 곳인지(규모·위치·채용방식) 어느 정도 알고 있다." },
+    { "id": "JI03", "domain": "JOB_INFO", "sub_domain": "자격요건 이해", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "CERT_PLANNING", "text": "희망 직무에 필요한 자격증·스펙이 무엇인지 알고 있다." },
+    { "id": "JI04", "domain": "JOB_INFO", "sub_domain": "정보 탐색 방법", "weight": 0.8, "gate": null, "critical": false, "filter_code": null, "action_code": "JOB_POSTING_ANALYSIS", "text": "채용정보를 어디서 어떻게 찾아야 하는지 알고 있다." },
+
+    { "id": "CP01", "domain": "COMPETENCY", "sub_domain": "전공 역량", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "CERT_PLANNING", "text": "전공 공부를 통해 직무에 쓸 수 있는 실력을 쌓아가고 있다." },
+    { "id": "CP02", "domain": "COMPETENCY", "sub_domain": "자격·스펙 준비", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "CERT_PLANNING", "text": "희망 직무에 필요한 자격증이나 스펙을 준비하고 있다." },
+    { "id": "CP03", "domain": "COMPETENCY", "sub_domain": "경험 축적", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "GOV_PROGRAM_LINK", "text": "아르바이트·실습·프로젝트 등 직무와 연결할 수 있는 경험이 있다." },
+    { "id": "CP04", "domain": "COMPETENCY", "sub_domain": "기초 직장역량", "weight": 0.8, "gate": null, "critical": false, "filter_code": null, "action_code": "GOV_PROGRAM_LINK", "text": "컴퓨터 활용·의사소통 등 기본적인 직장 역량에 자신이 있다." },
+
+    { "id": "AC01", "domain": "ACTION", "sub_domain": "실행 계획", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "JOB_TARGET_SETTING", "text": "진로를 위해 이번 학기에 무엇을 할지 구체적인 계획이 있다." },
+    { "id": "AC02", "domain": "ACTION", "sub_domain": "실행 지속", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "CAREER_CONSULT_JOBCAFE", "text": "계획한 진로 준비를 실제로 꾸준히 실행하고 있다." },
+    { "id": "AC03", "domain": "ACTION", "sub_domain": "도움 요청", "weight": 0.8, "gate": null, "critical": false, "filter_code": null, "action_code": "CAREER_CONSULT_JOBCAFE", "text": "진로 준비 중 막히는 부분이 있으면 교수님·상담자 등에게 도움을 요청한다." },
+    { "id": "AC04", "domain": "ACTION", "sub_domain": "시간 투자", "weight": 0.8, "gate": null, "critical": false, "filter_code": null, "action_code": "SELF_UNDERSTANDING_TEST", "text": "일주일 중 진로·취업 준비에 쓰는 시간이 정해져 있다." },
+
+    { "id": "JR01", "domain": "JOB_READY", "sub_domain": "목표직무 구체성", "weight": 1.5, "gate": "G4", "critical": true, "filter_code": "ACTIVE_JOB_SEEKER", "action_code": "JOB_TARGET_SETTING", "text": "지원하고 싶은 직무를 1~2개로 구체적으로 정해 두었다." },
+    { "id": "JR02", "domain": "JOB_READY", "sub_domain": "목표기업 탐색", "weight": 1.0, "gate": null, "critical": false, "filter_code": "ACTIVE_JOB_SEEKER", "action_code": "JOB_POSTING_ANALYSIS", "text": "가고 싶은 회사(또는 기관) 후보를 몇 곳 정해 두었다." },
+    { "id": "JR03", "domain": "JOB_READY", "sub_domain": "최근 채용탐색", "weight": 1.2, "gate": "G4", "critical": false, "filter_code": "ACTIVE_JOB_SEEKER", "action_code": "JOB_POSTING_ANALYSIS", "text": "최근 한 달 안에 실제 채용공고를 찾아본 적이 있다." },
+    { "id": "JR04", "domain": "JOB_READY", "sub_domain": "채용요건 대조", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "JOB_POSTING_ANALYSIS", "text": "채용공고의 지원자격을 내 준비 상태와 비교해 본 적이 있다." },
+    { "id": "JR05", "domain": "JOB_READY", "sub_domain": "입사지원서 준비", "weight": 1.2, "gate": "G4", "critical": false, "filter_code": "ACTIVE_JOB_SEEKER", "action_code": "RESUME_BASIC", "text": "이력서·자기소개서 초안을 가지고 있다." },
+    { "id": "JR06", "domain": "JOB_READY", "sub_domain": "면접 준비", "weight": 1.0, "gate": null, "critical": false, "filter_code": null, "action_code": "MOCK_INTERVIEW", "text": "면접에서 나를 소개할 내용을 준비해 본 적이 있다." },
+    { "id": "JR07", "domain": "JOB_READY", "sub_domain": "직무역량 실전", "weight": 1.2, "gate": "G4", "critical": false, "filter_code": "ACTIVE_JOB_SEEKER", "action_code": "CERT_PLANNING", "text": "희망 직무에 바로 쓸 수 있는 기술이나 포트폴리오가 있다." }
+  ]
+}

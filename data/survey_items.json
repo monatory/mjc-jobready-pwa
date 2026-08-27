@@ -1,0 +1,127 @@
+{
+  "version": "MJC-CDI-0.1-draft",
+  "note": "기본 설문 배점표 — 계획서 v0.2 §3-1·§3-2 그대로. 배점·선택지는 Read-Only(전문가 검토·파일럿 전 변경 금지).",
+  "jas_max": 100,
+  "scored_items": {
+    "career_direction": {
+      "label": "진로방향",
+      "question": "졸업 후 진로 방향을 어떻게 생각하고 있나요?",
+      "required": true,
+      "roles": ["SCORE", "GATE"],
+      "options": [
+        { "value": "EMPLOYMENT", "label": "취업", "score": 30 },
+        { "value": "FURTHER_STUDY_STARTUP", "label": "진학·창업", "score": 5 },
+        { "value": "UNDECIDED", "label": "아직 정하지 못함", "score": 0 }
+      ]
+    },
+    "job_will": {
+      "label": "취업준비 의지",
+      "question": "취업 준비를 언제부터 시작하고 싶나요?",
+      "required": true,
+      "roles": ["SCORE"],
+      "options": [
+        { "value": "START_NOW", "label": "바로 시작하고 싶다", "score": 20 },
+        { "value": "SLOWLY", "label": "천천히 준비하고 싶다", "score": 10 },
+        { "value": "UNDECIDED", "label": "아직 잘 모르겠다", "score": 0 }
+      ]
+    },
+    "school_support": {
+      "label": "학교지원 수용성",
+      "question": "학교의 취업지원(상담·프로그램)을 어떻게 활용하고 싶나요?",
+      "required": true,
+      "roles": ["SCORE", "ACTION"],
+      "options": [
+        { "value": "ACTIVE", "label": "적극적으로 활용하고 싶다", "score": 15 },
+        { "value": "WHEN_NEEDED", "label": "필요할 때 이용하겠다", "score": 8 },
+        { "value": "ALONE", "label": "혼자 준비하겠다", "score": 0 }
+      ]
+    },
+    "employment_timing": {
+      "label": "취업 희망시기",
+      "question": "언제쯤 취업하기를 희망하나요?",
+      "required": true,
+      "roles": ["SCORE", "GATE"],
+      "options": [
+        { "value": "WITHIN_3M", "label": "졸업 전 ~ 졸업 후 3개월", "score": 20 },
+        { "value": "WITHIN_6M", "label": "졸업 후 6개월 이내", "score": 16 },
+        { "value": "WITHIN_1Y", "label": "졸업 후 1년 이내", "score": 8 },
+        { "value": "OTHER", "label": "기타·미정", "score": 3 }
+      ]
+    },
+    "gov_link": {
+      "label": "정부지원 연계의향",
+      "question": "정부 취업지원 제도(국민취업지원제도 등)를 활용할 의향이 있나요?",
+      "required": true,
+      "roles": ["SCORE", "FILTER"],
+      "options": [
+        { "value": "USE", "label": "활용하고 싶다", "score": 10 },
+        { "value": "DONT_KNOW", "label": "잘 모른다", "score": 5 },
+        { "value": "NO_INTEREST", "label": "관심 없다", "score": 0 }
+      ]
+    },
+    "counsel_wish": {
+      "label": "상담 희망",
+      "question": "진로·취업 상담을 받아보고 싶나요?",
+      "required": true,
+      "roles": ["SCORE", "ACTION"],
+      "options": [
+        { "value": "YES", "label": "희망한다", "score": 5 },
+        { "value": "NO", "label": "지금은 괜찮다", "score": 0 }
+      ]
+    }
+  },
+  "unscored_items": {
+    "region": {
+      "label": "희망지역",
+      "roles": ["FILTER"],
+      "options": [
+        { "value": "SEOUL", "label": "서울" },
+        { "value": "GYEONGGI", "label": "경기" },
+        { "value": "INCHEON", "label": "인천" },
+        { "value": "OTHER", "label": "기타" }
+      ]
+    },
+    "major_link": {
+      "label": "전공연계 여부",
+      "roles": ["FILTER"],
+      "options": [
+        { "value": "Y", "label": "전공을 살려서 (전공진출형)" },
+        { "value": "N", "label": "전공과 다른 분야로 (방향전환형)" }
+      ]
+    },
+    "desired_job": {
+      "label": "희망직무",
+      "roles": ["FILTER"],
+      "type": "text",
+      "note": "자유입력 — 직무별 대상자 검색·채용공고·상담 매칭용"
+    },
+    "non_employment_type": {
+      "label": "진학·창업 구분",
+      "roles": ["FILTER"],
+      "visible_if": { "item": "career_direction", "value": "FURTHER_STUDY_STARTUP" },
+      "options": [
+        { "value": "FURTHER_STUDY", "label": "진학(편입·대학원)" },
+        { "value": "STARTUP", "label": "창업" }
+      ],
+      "note": "(기획 추가, 확정 필요) Route Tag 세분화용 — 점수 미반영. 센터 확정 전 임시 초안"
+    },
+    "consent_view": {
+      "label": "정보열람 동의",
+      "roles": ["CONSENT"],
+      "options": [
+        { "value": "Y", "label": "동의" },
+        { "value": "N", "label": "미동의" }
+      ],
+      "note": "Level 점수 반영 금지 — 접근 권한 판단 전용 (계획서 §3-2·§7)"
+    }
+  },
+  "certification_entry": {
+    "note": "자격증은 점수 환산 없이 원자료 보존 (1건 = 1레코드, Long Format)",
+    "fields": ["cert_name", "category", "status", "target_or_acquired_date", "memo"],
+    "status_values": [
+      { "value": "OWNED", "label": "보유" },
+      { "value": "PREPARING", "label": "준비 중" },
+      { "value": "TARGET", "label": "목표" }
+    ]
+  }
+}

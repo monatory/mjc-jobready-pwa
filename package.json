@@ -1,0 +1,26 @@
+{
+  "name": "mjc-jobready-pwa",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "명지전문대학 진로·취업 상태진단 및 맞춤형 취업지원 PWA (신규 독립 시스템)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "validate:data": "node scripts/validate-data.mjs",
+    "test": "node tests/test_level_engine.js"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7"
+  }
+}

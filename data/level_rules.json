@@ -1,0 +1,57 @@
+{
+  "version": "MJC-DNA-0.1-draft",
+  "note": "Level 1~4 판정 규칙 — 계획서 v0.2 §4 그대로. 컷오프·조건은 파일럿 보정 전 초안(v0.1 가설). Read-Only.",
+  "jas_cutoff_level3": 70,
+  "gates": {
+    "employment_gate": {
+      "desc": "진로방향 = 취업 (Level 3 진입 필수)",
+      "item": "career_direction",
+      "values": ["EMPLOYMENT"]
+    },
+    "timing_gate": {
+      "desc": "취업 희망시기 = 졸업 전 ~ 6개월 이내 (Level 3 진입 필수)",
+      "item": "employment_timing",
+      "values": ["WITHIN_3M", "WITHIN_6M"]
+    }
+  },
+  "level1_fallback": {
+    "desc": "취업 방향이라도 구직활성도·자기이해가 모두 낮으면 진로탐색(L1)으로 분류",
+    "jas_below": 30,
+    "self_domain": "SELF",
+    "self_avg_below": 2.5
+  },
+  "level4_signals": {
+    "desc": "L3 조건 + 목표직무 구체화(필수) + 실전 준비신호 2개 이상",
+    "answer_at_least": 4,
+    "required_items": ["JR01"],
+    "optional_items": ["JR03", "JR05", "JR07"],
+    "optional_min_count": 2
+  },
+  "route_tags": {
+    "EMPLOYMENT": "취업 Route",
+    "FURTHER_STUDY_STARTUP": "진학·창업 Route — Level 3~4 자동 승급 금지, L1~2로 관리",
+    "UNDECIDED": "미정 Route"
+  },
+  "consultant_by_level": {
+    "1": "CAREER",
+    "2": "CAREER",
+    "3": "EMPLOYMENT",
+    "4": "EMPLOYMENT"
+  },
+  "levels": {
+    "1": { "name": "진로탐색", "desc": "진로방향 미정 또는 진로목표·자기이해가 낮고 구직활성도가 낮은 상태" },
+    "2": { "name": "진로설정", "desc": "진로방향은 있으나 희망직무·산업·전공연계 방향을 더 구체화해야 하는 상태" },
+    "3": { "name": "취업준비", "desc": "진로방향=취업 Gate 충족 + JAS 70점 이상 + 졸업 전~6개월 이내 취업의사" },
+    "4": { "name": "실전취업", "desc": "Level 3 조건 + 목표직무 구체화 + 실전 준비신호(채용탐색·입사지원서·직무역량) 충족" }
+  },
+  "score_scale": {
+    "desc": "JRS·CDS는 진단문항 5점 척도 영역평균 × 20 = 0~100점 환산",
+    "jrs_domains": ["JOB_READY"],
+    "cds_domains": ["SELF", "CAREER_DIR", "JOB_INFO", "COMPETENCY", "ACTION"]
+  },
+  "weak_area": {
+    "desc": "영역평균이 낮은 순으로 최대 2개, 기준선(3.5) 미만만 보완영역으로 제시",
+    "threshold": 3.5,
+    "max_count": 2
+  }
+}
