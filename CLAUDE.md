@@ -328,7 +328,7 @@ v0.1 배점 구조상 취업 방향 학생의 최저 Level은 2가 되며, 이�
 | 백엔드 | Firebase Firestore (asia-northeast3) | 〃. 단, **실명 데이터이므로 Auth 필수** — 시범부터 Anonymous Auth 이상 |
 | 판정 | 전부 클라이언트 순수 함수 (결정론) | AI API 의존 없음 |
 | 차트 | Recharts | 〃 |
-| 배포 | 개발기 GitHub Pages(별도 저장소) → 본 운영 학내 도메인 | ⚠ 실명 데이터 수집 시작 전 Security Rules·Auth 강화 선행 |
+| 배포 | **개발기 GitHub Pages 가동 중 (2026-08-28)** → 본 운영 학내 도메인 | 저장소 `github.com/monatory/mjc-jobready-pwa` · 라이브 `https://monatory.github.io/mjc-jobready-pwa/` · main push 시 Actions 자동 배포(검증 53→테스트 15→빌드). 서버 전송 없는 프로토타입이라 공개 무해. ⚠ 실명 수집 시작 전 Security Rules·Auth 강화 선행 |
 | PDF/인쇄 | `window.print()` + `@media print` | jsPDF 금지 (한글 폰트 회피, MJC-CAT §21) |
 | 코드 컨벤션 | camelCase, 한국어 주석, JSON snake_case, 코드 상수 SNAKE_CASE | 〃 |
 | CI | `npm run build`(tsc -b 포함) + validate-data + 회귀 테스트 통과 후에만 push | MJC-CAT §17.2 사고 회고 승계 |

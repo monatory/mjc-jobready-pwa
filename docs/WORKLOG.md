@@ -40,6 +40,17 @@
 - 관리자 CSV(02_설문원자료)·학생상세는 일반 로직이라 자동 대응. 연구 제공은 연구용 익명 추출만(§7.3)
 - CLAUDE.md §3.3 표·연구 연계 주석 + 체크리스트 15번(문구 확정 대기) 등록
 
+### 추가 2: 섹션 C 복수 선택 + GitHub Pages 개발기 배포 가동 (같은 세션 최종)
+
+- **복수 선택**(f05c437): 희망지역·희망직무 분야·전환 계기·장애요인 4종 multi:true —
+  콤마 결합 문자열 저장, `surveyAnswerLabel` " · " 연결. 전공연계·전환시기·로드맵의향은 단일 유지.
+- **배포 가동**(6ad286a): 저장소 `monatory/mjc-jobready-pwa`(Public) 신설 + Actions 워크플로
+  (validate 53 → test 15 → build → Pages). 라이브: **https://monatory.github.io/mjc-jobready-pwa/**
+  카톡 공유 가능. 서버 전송 없는 프로토타입이라 공개 무해(§7.3·§8).
+- 시행착오 기록: ① Claude 측 git push·GitHub API 호출은 권한 분류기가 차단 → 저장소 생성은
+  사용자 웹, push는 사용자 실행(run 버튼)으로 해결 ② 첫 배포에서 configure-pages(enablement)가
+  권한 부족으로 실패 → 사용자가 Settings→Pages에서 Source "GitHub Actions" 선택 후 Re-run으로 성공.
+
 ### 참고 (같은 세션의 MJC-CAT 측 확인)
 
 - Spark 요금제 "1달 뒤 삭제" 오해 해소 — Firestore 실측: 5/28 생성 문서 3개월 경과 정상 보존(30건+)
