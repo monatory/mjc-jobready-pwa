@@ -67,14 +67,17 @@ const DEPTS = [
 const CERT_POOL: Array<{ name: string; category: string }> = [
   { name: "정보처리산업기사", category: "MAJOR" },
   { name: "컴퓨터활용능력 2급", category: "OA" },
+  { name: "컴퓨터활용능력 1급", category: "OA" },
+  { name: "ITQ 엑셀", category: "OA" },
+  { name: "워드프로세서", category: "OA" },
   { name: "전산회계 1급", category: "MAJOR" },
   { name: "사회복지사 2급", category: "MAJOR" },
-  { name: "ITQ 엑셀", category: "OA" },
-  { name: "지게차운전기능사", category: "ETC" },
   { name: "미용사(일반)", category: "MAJOR" },
-  { name: "TOEIC 700+", category: "LANG" },
   { name: "전기기능사", category: "MAJOR" },
+  { name: "TOEIC 700+", category: "LANG" },
   { name: "JLPT N2", category: "LANG" },
+  { name: "지게차운전기능사", category: "ETC" },
+  { name: "SMAT 2급", category: "ETC" },
 ];
 
 function makeStudent(i: number): StudentRecord {
@@ -105,7 +108,8 @@ function makeStudent(i: number): StudentRecord {
     home_region: pick(["SEOUL", "GYEONGGI", "INCHEON", "OTHER"]),
     region: rng() > 0.7 ? "SEOUL,GYEONGGI" : pick(["SEOUL", "GYEONGGI", "INCHEON", "OTHER"]),
     major_link: majorLink,
-    desired_job_group: direction === "EMPLOYMENT" ? groupPick.join(",") : "",
+    desired_job_group:
+      direction === "EMPLOYMENT" ? groupPick.join(",") : direction === "UNDECIDED" && rng() > 0.4 ? "UNDECIDED" : "",
     desired_job: direction === "EMPLOYMENT" ? pick(["웹 개발자", "사무행정", "사회복지사", "마케터", "설비 엔지니어", "회계사무원", "뷰티 아티스트", "게임 QA"]) : "",
     ...(majorLink === "N"
       ? {
@@ -125,14 +129,18 @@ function makeStudent(i: number): StudentRecord {
     diag[q.id] = Math.min(5, Math.max(1, v));
   }
 
+  // 자격증 0~3건 — 필터 시연이 쉽도록 보유율을 실감나게(약 75%) 생성
   const certs: Array<{ cert_name: string; category: string; status: string }> = [];
-  if (rng() > 0.4) {
-    const c1 = pick(CERT_POOL);
-    certs.push({ cert_name: c1.name, category: c1.category, status: pick(["OWNED", "PREPARING", "TARGET"]) });
-    if (rng() > 0.7) {
-      const c2 = pick(CERT_POOL.filter((c) => c.name !== c1.name));
-      certs.push({ cert_name: c2.name, category: c2.category, status: pick(["OWNED", "PREPARING", "TARGET"]) });
-    }
+  const certCount = rng() > 0.75 ? 0 : rng() > 0.5 ? 1 : rng() > 0.35 ? 2 : 3;
+  const pool = [...CERT_POOL];
+  for (let c = 0; c < certCount && pool.length > 0; c++) {
+    const idx = Math.floor(rng() * pool.length);
+    const [cert] = pool.splice(idx, 1);
+    certs.push({
+      cert_name: cert.name,
+      category: cert.category,
+      status: weighted([["OWNED", 0.45], ["PREPARING", 0.35], ["TARGET", 0.2]]),
+    });
   }
 
   const result = evaluate(survey, diag, { surveyItems, diagnosticBank, levelRules });
