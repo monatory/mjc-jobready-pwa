@@ -17,6 +17,8 @@ import {
 } from "../lib/sessionState";
 
 const CERT_STATUS = (surveyItems.certification_entry.status_values as Array<{ value: string; label: string }>);
+const CERT_CATEGORY = (surveyItems.certification_entry as { category_values?: Array<{ value: string; label: string }> })
+  .category_values ?? [];
 
 export default function Survey() {
   const navigate = useNavigate();
@@ -173,29 +175,49 @@ export default function Survey() {
             B. 진로·취업 설문 <span className="required-mark">필수</span>
             <span className="progress-text">{answeredCount} / {scoredItemEntries.length}</span>
           </h2>
-          {scoredItemEntries.map(([key, item], idx) => (
-            <div className={`q-block ${showErrors && !answers[key] ? "q-block--error" : ""}`} key={key}>
-              <p className="q-block__label">
-                <span className="q-num">{idx + 1}</span> {item.question}
-              </p>
-              <div className="option-col">
-                {item.options.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    className={`opt ${answers[key] === o.value ? "opt--on" : ""}`}
-                    onClick={() => pick(key, o.value)}
-                  >
-                    {o.label}
-                  </button>
-                ))}
+          {scoredItemEntries.map(([key, item], idx) => {
+            // 문항 부가 안내(info) — 제도 설명 펼치기 + 컨설턴트 연계 고지 (데이터 주도, §4 하드코딩 금지)
+            const info = (item as unknown as {
+              info?: { summary: string; programs: Array<{ name: string; desc: string }>; notice: string };
+            }).info;
+            return (
+              <div className={`q-block ${showErrors && !answers[key] ? "q-block--error" : ""}`} key={key}>
+                <p className="q-block__label">
+                  <span className="q-num">{idx + 1}</span> {item.question}
+                </p>
+                {info && (
+                  <details className="q-info">
+                    <summary>ⓘ {info.summary}</summary>
+                    <ul>
+                      {info.programs.map((p) => (
+                        <li key={p.name}>
+                          <strong>{p.name}</strong> — {p.desc}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                <div className="option-col">
+                  {item.options.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      className={`opt ${answers[key] === o.value ? "opt--on" : ""}`}
+                      onClick={() => pick(key, o.value)}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                {info && <p className="q-info__notice">{info.notice}</p>}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
 
         <section className="card">
           <h2 className="card__title">C. 추가 정보 <span className="optional">(선택 — 상담·매칭에 활용)</span></h2>
+          {unscoredRadio("home_region")}
           {unscoredRadio("region")}
           {unscoredRadio("major_link")}
           {/* 연구 연계 문항(비점수) — 방향전환형(N) 선택 시에만 전환 시기·계기 노출 */}
@@ -224,6 +246,18 @@ export default function Survey() {
                   placeholder="자격증명"
                   onChange={(e) => updateCert(i, { cert_name: e.target.value })}
                 />
+                <select
+                  className="input cert-row__status"
+                  value={c.category ?? ""}
+                  onChange={(e) => updateCert(i, { category: e.target.value })}
+                >
+                  <option value="">분류 선택</option>
+                  {CERT_CATEGORY.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
                 <select
                   className="input cert-row__status"
                   value={c.status}

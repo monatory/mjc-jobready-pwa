@@ -10,6 +10,7 @@ export interface StudentProfile {
 
 export interface CertEntry {
   cert_name: string;
+  category?: string; // OA | MAJOR | LANG | ETC — 상담사 활용 분류 (survey_items.certification_entry.category_values)
   status: "OWNED" | "PREPARING" | "TARGET";
 }
 

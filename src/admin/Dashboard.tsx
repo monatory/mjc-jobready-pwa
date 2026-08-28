@@ -3,13 +3,52 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { mockStudents, surveyAnswerLabel, type StudentRecord } from "./mockStudents";
-import { exportSheet, exportSheetForResearch, sheetKeys } from "./csvExport";
-import { recommendationMaster, domainLabels, levelRules } from "../lib/dataLoader";
+import { exportSheet, exportSheetForResearch, sheetKeys, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
+import { recommendationMaster, domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
 
 type Section = "overview" | "students" | "recommend" | "download";
 
 const LEVEL_NAMES: Record<number, string> = { 1: "진로탐색", 2: "진로설정", 3: "취업준비", 4: "실전취업" };
 const rules = levelRules as unknown as { jas_cutoff_level3: number };
+
+// 설문 정의에서 선택지 목록을 가져오는 헬퍼 (코드 하드코딩 금지 — §4)
+type Opt = { value: string; label: string };
+const optionsOf = (key: string): Opt[] => {
+  const all = {
+    ...(surveyItems.scored_items as Record<string, { options?: Opt[] }>),
+    ...(surveyItems.unscored_items as Record<string, { options?: Opt[] }>),
+  };
+  return all[key]?.options ?? [];
+};
+
+// ── 상세 필터 (2026-08-28 취·창업팀 요구 — 상담사가 대상자를 정밀 추출) ──
+interface AdvFilter {
+  majorLink: string;   // 전공진출형/방향전환형
+  homeRegion: string;  // 본가(거주지) 지역
+  region: string;      // 희망 취업 지역 (복수값 포함 매칭)
+  jobGroup: string;    // 희망직무 분야 (복수값 포함 매칭)
+  cert: string;        // OWNED=보유 있음 / PREPARING=준비·목표만 / NONE=미입력
+  certCat: string;     // 자격 분류 (OA/전공/어학/기타)
+  timing: string;      // 취업 희망시기
+  gov: string;         // 정부지원 연계의향
+}
+const EMPTY_ADV: AdvFilter = {
+  majorLink: "", homeRegion: "", region: "", jobGroup: "", cert: "", certCat: "", timing: "", gov: "",
+};
+
+const matchesAdv = (s: StudentRecord, f: AdvFilter): boolean => {
+  if (f.majorLink && s.unscored.major_link !== f.majorLink) return false;
+  if (f.homeRegion && s.unscored.home_region !== f.homeRegion) return false;
+  if (f.region && !(s.unscored.region ?? "").split(",").includes(f.region)) return false;
+  if (f.jobGroup && !(s.unscored.desired_job_group ?? "").split(",").includes(f.jobGroup)) return false;
+  if (f.cert === "OWNED" && !s.certs.some((c) => c.status === "OWNED")) return false;
+  if (f.cert === "PREPARING" && !(s.certs.length > 0 && !s.certs.some((c) => c.status === "OWNED"))) return false;
+  if (f.cert === "NONE" && s.certs.length > 0) return false;
+  if (f.certCat && !s.certs.some((c) => (c as { category?: string }).category === f.certCat)) return false;
+  if (f.timing && s.survey.employment_timing !== f.timing) return false;
+  if (f.gov && s.survey.gov_link !== f.gov) return false;
+  return true;
+};
 
 // ── 빠른 필터 프리셋 (계획서 §6-2) ─────────────────────────────
 const PRESETS: Array<{ key: string; label: string; fn: (s: StudentRecord) => boolean }> = [
@@ -36,6 +75,7 @@ export default function Dashboard() {
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const [deptFilter, setDeptFilter] = useState<string>("");
   const [search, setSearch] = useState("");
+  const [adv, setAdv] = useState<AdvFilter>(EMPTY_ADV);
   const [detail, setDetail] = useState<StudentRecord | null>(null);
   const [masterState, setMasterState] = useState(
     () => (recommendationMaster as { activities: Array<{ recommendation_code: string; name: string; owner: string; levels: number[]; weak_domains: string[]; priority: number; active: boolean; active_from: string; active_to: string; student_desc: string }> }).activities
@@ -51,10 +91,11 @@ export default function Dashboard() {
     }
     if (levelFilter) list = list.filter((s) => s.result.level === levelFilter);
     if (deptFilter) list = list.filter((s) => s.dept === deptFilter);
+    list = list.filter((s) => matchesAdv(s, adv));
     if (search.trim())
       list = list.filter((s) => s.name.includes(search.trim()) || s.student_id.includes(search.trim()));
     return [...list].sort((a, b) => b.result.jas - a.result.jas);
-  }, [students, preset, levelFilter, deptFilter, search]);
+  }, [students, preset, levelFilter, deptFilter, adv, search]);
 
   // ── 집계 ──
   const kpi = useMemo(() => {
@@ -91,7 +132,7 @@ export default function Dashboard() {
           <span className="app-header__logo">MJC</span>
           <div>
             <strong>MJC-READY 관리자</strong>
-            <span>AI융합진로지원센터</span>
+            <span>학생지원처 취·창업팀</span>
           </div>
         </div>
         <nav className="admin__nav">
@@ -212,12 +253,67 @@ export default function Dashboard() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <p className="muted filter-count">{filtered.length}명 (JAS 높은 순)</p>
+
+            {/* 상세 필터 — 상담사가 대상자를 정밀 추출 (전공연계·지역·직무분야·자격증 등) */}
+            <details className="card adv-filter" open>
+              <summary>상세 필터 {Object.values(adv).some(Boolean) && <span className="adv-filter__on">적용 중</span>}</summary>
+              <div className="adv-filter__grid">
+                {(
+                  [
+                    ["majorLink", "전공연계", optionsOf("major_link")],
+                    ["homeRegion", "본가지역", optionsOf("home_region")],
+                    ["region", "희망 취업 지역", optionsOf("region")],
+                    ["jobGroup", "희망직무 분야", optionsOf("desired_job_group")],
+                    ["timing", "취업 희망시기", optionsOf("employment_timing")],
+                    ["gov", "정부지원 의향", optionsOf("gov_link")],
+                    [
+                      "cert",
+                      "자격증",
+                      [
+                        { value: "OWNED", label: "보유 있음" },
+                        { value: "PREPARING", label: "준비·목표만" },
+                        { value: "NONE", label: "미입력" },
+                      ],
+                    ],
+                    ["certCat", "자격 분류", CERT_CATEGORIES],
+                  ] as Array<[keyof AdvFilter, string, Opt[]]>
+                ).map(([field, label, opts]) => (
+                  <label className="adv-filter__field" key={field}>
+                    <span>{label}</span>
+                    <select
+                      className="input"
+                      value={adv[field]}
+                      onChange={(e) => setAdv((prev) => ({ ...prev, [field]: e.target.value }))}
+                    >
+                      <option value="">전체</option>
+                      {opts.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              <div className="adv-filter__actions">
+                <button className="btn btn--ghost" onClick={() => setAdv(EMPTY_ADV)}>필터 초기화</button>
+              </div>
+            </details>
+
+            <div className="filter-result-bar">
+              <p className="muted filter-count">{filtered.length}명 (JAS 높은 순)</p>
+              <div className="filter-result-bar__dl">
+                <button className="btn btn--primary btn--sm" onClick={() => exportSheet("01_학생상태", filtered)}>
+                  필터 결과 CSV (운영용)
+                </button>
+                <button className="btn btn--ghost btn--sm" onClick={() => exportSheetForResearch("01_학생상태", filtered)}>
+                  필터 결과 CSV (익명)
+                </button>
+              </div>
+            </div>
             <div className="table-wrap card">
               <table className="admin-table admin-table--hover">
                 <thead>
                   <tr>
-                    <th>학번</th><th>성명</th><th>학과</th><th>학년</th><th>진로방향</th>
+                    <th>학번</th><th>성명</th><th>학과</th><th>학년</th><th>진로방향</th><th>전공연계</th>
                     <th>JAS</th><th>Level</th><th>희망시기</th><th>상담</th>
                   </tr>
                 </thead>
@@ -229,6 +325,7 @@ export default function Dashboard() {
                       <td>{s.dept}</td>
                       <td>{s.grade}</td>
                       <td>{surveyAnswerLabel("career_direction", s.survey.career_direction)}</td>
+                      <td>{s.unscored.major_link === "Y" ? "전공진출" : s.unscored.major_link === "N" ? "방향전환" : "—"}</td>
                       <td className="num">{s.result.jas}</td>
                       <td><span className={`lv-badge lv-badge--l${s.result.level}`}>L{s.result.level} {LEVEL_NAMES[s.result.level]}</span></td>
                       <td>{surveyAnswerLabel("employment_timing", s.survey.employment_timing)}</td>
@@ -352,8 +449,19 @@ export default function Dashboard() {
                   {Object.entries(detail.survey).map(([k, v]) => (
                     <li key={k}>{surveyAnswerLabel(k, v)}</li>
                   ))}
+                  <li>전공연계: {surveyAnswerLabel("major_link", detail.unscored.major_link)}</li>
+                  <li>
+                    본가 {surveyAnswerLabel("home_region", detail.unscored.home_region)} → 희망{" "}
+                    {surveyAnswerLabel("region", detail.unscored.region)}
+                  </li>
+                  <li>희망직무 분야: {surveyAnswerLabel("desired_job_group", detail.unscored.desired_job_group)}</li>
                   <li>희망직무: {detail.unscored.desired_job || "—"}</li>
-                  <li>자격증: {detail.certs.map((c) => c.cert_name).join(", ") || "—"}</li>
+                  <li>
+                    자격증:{" "}
+                    {detail.certs
+                      .map((c) => `${c.cert_name}${(c as { category?: string }).category ? ` [${certCategoryLabel((c as { category?: string }).category)}]` : ""}`)
+                      .join(", ") || "—"}
+                  </li>
                 </ul>
                 <h4>추천활동 ({detail.recs.length})</h4>
                 <ul className="reason-list">

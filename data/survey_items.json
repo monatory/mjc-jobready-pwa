@@ -50,14 +50,28 @@
     },
     "gov_link": {
       "label": "정부지원 연계의향",
-      "question": "정부 취업지원 제도(국민취업지원제도 등)를 활용할 의향이 있나요?",
+      "question": "정부 취업지원 제도(국민취업지원제도, 미래내일 일경험 등)를 활용할 의향이 있나요?",
       "required": true,
       "roles": ["SCORE", "FILTER"],
       "options": [
         { "value": "USE", "label": "활용하고 싶다", "score": 10 },
         { "value": "DONT_KNOW", "label": "잘 모른다", "score": 5 },
         { "value": "NO_INTEREST", "label": "관심 없다", "score": 0 }
-      ]
+      ],
+      "info": {
+        "summary": "이 제도들이 무엇인가요? (눌러서 펼치기)",
+        "programs": [
+          {
+            "name": "국민취업지원제도",
+            "desc": "취업을 원하는 청년에게 1:1 취업지원 서비스와 함께, 요건 충족 시 구직촉진수당을 지원하는 고용노동부 제도입니다."
+          },
+          {
+            "name": "미래내일 일경험",
+            "desc": "기업 탐방·프로젝트·인턴십 등 실제 일경험 기회를 제공하는 고용노동부 청년 일경험 지원 사업입니다."
+          }
+        ],
+        "notice": "\"활용하고 싶다\"를 선택하시면, 잡카페 취업컨설턴트가 참여 방법과 신청 절차를 안내하고 연계해 드립니다."
+      }
     },
     "counsel_wish": {
       "label": "상담 희망",
@@ -71,8 +85,19 @@
     }
   },
   "unscored_items": {
+    "home_region": {
+      "label": "본가(거주지) 지역",
+      "roles": ["FILTER", "RESEARCH"],
+      "options": [
+        { "value": "SEOUL", "label": "서울" },
+        { "value": "GYEONGGI", "label": "경기" },
+        { "value": "INCHEON", "label": "인천" },
+        { "value": "OTHER", "label": "그 외 지역" }
+      ],
+      "note": "(2026-08-28 취·창업팀 요구) 희망 취업 지역과 교차해 수도권 잔류형/연고지 복귀형 판별 — 잡카페 상담·채용처 매칭 핵심"
+    },
     "region": {
-      "label": "희망지역",
+      "label": "희망 취업 지역",
       "roles": ["FILTER"],
       "multi": true,
       "options": [
@@ -183,8 +208,14 @@
     }
   },
   "certification_entry": {
-    "note": "자격증은 점수 환산 없이 원자료 보존 (1건 = 1레코드, Long Format)",
+    "note": "자격증은 점수 환산 없이 원자료 보존 (1건 = 1레코드, Long Format). 분류(category)는 상담사 활용 핵심 — OA/전공/어학/기타 (2026-08-28 취·창업팀 요구)",
     "fields": ["cert_name", "category", "status", "target_or_acquired_date", "memo"],
+    "category_values": [
+      { "value": "OA", "label": "OA·사무 (컴활·ITQ 등)" },
+      { "value": "MAJOR", "label": "전공 관련" },
+      { "value": "LANG", "label": "어학 (TOEIC·JLPT 등)" },
+      { "value": "ETC", "label": "기타" }
+    ],
     "status_values": [
       { "value": "OWNED", "label": "보유" },
       { "value": "PREPARING", "label": "준비 중" },

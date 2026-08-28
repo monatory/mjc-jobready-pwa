@@ -7,6 +7,14 @@ import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
 type ColumnDef = { key: string; label: string };
 const SHEETS = excelColumnsJson.sheets as Record<string, ColumnDef[]>;
 
+/** 자격증 분류 코드 → 라벨 (survey_items.certification_entry.category_values) */
+export const CERT_CATEGORIES = ((surveyItems as { certification_entry: { category_values?: Array<{ value: string; label: string }> } })
+  .certification_entry.category_values ?? []);
+export function certCategoryLabel(code: string | undefined): string {
+  if (!code) return "";
+  return CERT_CATEGORIES.find((c) => c.value === code)?.label ?? code;
+}
+
 const csvCell = (v: unknown): string => {
   const s = v == null ? "" : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -39,14 +47,18 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
             grade: s.grade,
             semester: s.semester,
             career_direction: surveyAnswerLabel("career_direction", s.survey.career_direction),
+            major_link: surveyAnswerLabel("major_link", s.unscored.major_link),
             jas: s.result.jas,
             jrs: s.result.jrs ?? "",
             cds: s.result.cds ?? "",
             level: s.result.level,
             route_tag: s.result.routeTag,
             employment_timing: surveyAnswerLabel("employment_timing", s.survey.employment_timing),
+            desired_job_group: surveyAnswerLabel("desired_job_group", s.unscored.desired_job_group),
             desired_job: s.unscored.desired_job ?? "",
+            home_region: surveyAnswerLabel("home_region", s.unscored.home_region),
             region: surveyAnswerLabel("region", s.unscored.region),
+            gov_link: surveyAnswerLabel("gov_link", s.survey.gov_link),
             counsel_wish: s.survey.counsel_wish === "YES" ? "희망" : "미희망",
             consent_view: "동의",
           },
@@ -66,7 +78,7 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
         return s.certs.map((c) => ({
           student_id: s.student_id,
           cert_name: c.cert_name,
-          category: "",
+          category: certCategoryLabel((c as { category?: string }).category),
           status: c.status === "OWNED" ? "보유" : c.status === "PREPARING" ? "준비 중" : "목표",
           target_or_acquired_date: "",
           memo: "",

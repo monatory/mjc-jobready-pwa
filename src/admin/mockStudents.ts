@@ -22,7 +22,7 @@ export interface StudentRecord {
   semester: string;
   survey: Record<string, string>;
   unscored: Record<string, string>;
-  certs: Array<{ cert_name: string; status: string }>;
+  certs: Array<{ cert_name: string; category?: string; status: string }>;
   diag: Record<string, number>;
   result: EvaluationResult;
   weak: WeakArea[];
@@ -64,9 +64,17 @@ const DEPTS = [
   "경영학과", "세무회계과", "사회복지과", "관광경영학과", "뷰티매니지먼트과",
 ];
 
-const CERT_POOL = [
-  "정보처리산업기사", "컴퓨터활용능력 2급", "전산회계 1급", "사회복지사 2급",
-  "GTQ 1급", "지게차운전기능사", "미용사(일반)", "TOEIC 700+", "전기기능사", "SQLD",
+const CERT_POOL: Array<{ name: string; category: string }> = [
+  { name: "정보처리산업기사", category: "MAJOR" },
+  { name: "컴퓨터활용능력 2급", category: "OA" },
+  { name: "전산회계 1급", category: "MAJOR" },
+  { name: "사회복지사 2급", category: "MAJOR" },
+  { name: "ITQ 엑셀", category: "OA" },
+  { name: "지게차운전기능사", category: "ETC" },
+  { name: "미용사(일반)", category: "MAJOR" },
+  { name: "TOEIC 700+", category: "LANG" },
+  { name: "전기기능사", category: "MAJOR" },
+  { name: "JLPT N2", category: "LANG" },
 ];
 
 function makeStudent(i: number): StudentRecord {
@@ -89,10 +97,24 @@ function makeStudent(i: number): StudentRecord {
     counsel_wish: rng() > 0.45 ? "YES" : "NO",
   };
 
+  const majorLink = rng() > 0.35 ? "Y" : "N";
+  const jobGroups = ["OFFICE_ADMIN", "ACCOUNTING", "SAFETY_FACILITY", "SERVICE", "MAJOR_FIELD", "IT_DESIGN"];
+  const groupPick = [pick(jobGroups)];
+  if (rng() > 0.6) groupPick.push(pick(jobGroups.filter((g) => g !== groupPick[0])));
   const unscored: Record<string, string> = {
-    region: pick(["SEOUL", "GYEONGGI", "INCHEON", "OTHER"]),
-    major_link: rng() > 0.35 ? "Y" : "N",
+    home_region: pick(["SEOUL", "GYEONGGI", "INCHEON", "OTHER"]),
+    region: rng() > 0.7 ? "SEOUL,GYEONGGI" : pick(["SEOUL", "GYEONGGI", "INCHEON", "OTHER"]),
+    major_link: majorLink,
+    desired_job_group: direction === "EMPLOYMENT" ? groupPick.join(",") : "",
     desired_job: direction === "EMPLOYMENT" ? pick(["웹 개발자", "사무행정", "사회복지사", "마케터", "설비 엔지니어", "회계사무원", "뷰티 아티스트", "게임 QA"]) : "",
+    ...(majorLink === "N"
+      ? {
+          career_shift_timing: pick(["BEFORE_ENTRY", "YEAR_1", "YEAR_2", "FINAL_YEAR"]),
+          career_shift_reason: pick(["MAJOR_MARKET", "INTEREST", "EXPERIENCE", "CONDITIONS"]),
+        }
+      : {}),
+    prep_difficulty: pick(["NO_INFO", "CERT_BURDEN", "NO_EXPERIENCE", "NO_TIME", "COST", "NONE"]),
+    roadmap_demand: pick(["WILL_USE", "WILL_USE", "MAYBE", "NO_NEED"]),
   };
 
   const diag: Record<string, number> = {};
@@ -103,10 +125,15 @@ function makeStudent(i: number): StudentRecord {
     diag[q.id] = Math.min(5, Math.max(1, v));
   }
 
-  const certs =
-    rng() > 0.4
-      ? [{ cert_name: pick(CERT_POOL), status: pick(["OWNED", "PREPARING", "TARGET"]) }]
-      : [];
+  const certs: Array<{ cert_name: string; category: string; status: string }> = [];
+  if (rng() > 0.4) {
+    const c1 = pick(CERT_POOL);
+    certs.push({ cert_name: c1.name, category: c1.category, status: pick(["OWNED", "PREPARING", "TARGET"]) });
+    if (rng() > 0.7) {
+      const c2 = pick(CERT_POOL.filter((c) => c.name !== c1.name));
+      certs.push({ cert_name: c2.name, category: c2.category, status: pick(["OWNED", "PREPARING", "TARGET"]) });
+    }
+  }
 
   const result = evaluate(survey, diag, { surveyItems, diagnosticBank, levelRules });
   const weak = findWeakAreas(
