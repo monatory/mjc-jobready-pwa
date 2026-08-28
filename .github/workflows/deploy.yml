@@ -1,0 +1,68 @@
+# MJC-READY 개발기 미리보기 배포 — main push 시 GitHub Pages 자동 배포.
+# 배포 URL: https://monatory.github.io/mjc-jobready-pwa/
+#
+# 시범 프로토타입 단계: 서버 전송 없음(입력값은 각자 브라우저 sessionStorage에만 저장)
+# → 공개 배포해도 개인정보 위험 없음 (CLAUDE.md §7.3, §9).
+# 실명 수집(Firestore 연동)은 Auth·Security Rules 강화 전까지 시작하지 않는다.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Validate data integrity (배점·참조 무결성 53건)
+        run: npm run validate:data
+
+      - name: Run regression tests (판정엔진 15건)
+        run: npm test
+
+      - name: Build (tsc + Vite)
+        env:
+          GITHUB_PAGES: "1"
+        run: npm run build
+
+      - name: Setup Pages (최초 1회 자동 활성화)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
