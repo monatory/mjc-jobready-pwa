@@ -64,10 +64,12 @@ export default function Survey() {
     navigate("/diagnostic");
   };
 
-  // 비점수 선택형 항목 공통 렌더러 — visible_if는 설문 응답·비점수 응답 어느 쪽이든 참조 가능
+  // 비점수 선택형 항목 공통 렌더러 — visible_if는 설문 응답·비점수 응답 어느 쪽이든 참조 가능.
+  // multi:true 항목은 복수 선택(토글) — 값은 콤마 결합 문자열로 저장(예: "SEOUL,GYEONGGI")
   const unscoredRadio = (key: string) => {
     const item = (surveyItems.unscored_items as Record<string, {
       label: string;
+      multi?: boolean;
       options?: Array<{ value: string; label: string }>;
       visible_if?: { item: string; value: string };
     }>)[key];
@@ -76,16 +78,30 @@ export default function Survey() {
       const v = answers[item.visible_if.item] ?? unscored[item.visible_if.item];
       if (v !== item.visible_if.value) return null;
     }
+    const selected = item.multi ? (unscored[key] ?? "").split(",").filter(Boolean) : [];
+    const toggle = (value: string) => {
+      if (!item.multi) {
+        pickUnscored(key, value);
+        return;
+      }
+      const next = selected.includes(value)
+        ? selected.filter((v) => v !== value)
+        : [...selected, value];
+      pickUnscored(key, next.join(","));
+    };
+    const isOn = (value: string) => (item.multi ? selected.includes(value) : unscored[key] === value);
     return (
       <div className="field">
-        <label className="field__label">{item.label} <span className="optional">(선택)</span></label>
+        <label className="field__label">
+          {item.label} <span className="optional">{item.multi ? "(선택 · 복수 가능)" : "(선택)"}</span>
+        </label>
         <div className="option-row">
           {item.options.map((o) => (
             <button
               key={o.value}
               type="button"
-              className={`chip ${unscored[key] === o.value ? "chip--on" : ""}`}
-              onClick={() => pickUnscored(key, o.value)}
+              className={`chip ${isOn(o.value) ? "chip--on" : ""}`}
+              onClick={() => toggle(o.value)}
             >
               {o.label}
             </button>

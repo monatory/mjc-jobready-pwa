@@ -145,6 +145,12 @@ export function surveyAnswerLabel(itemKey: string, value: string | undefined): s
     ...(surveyItems.scored_items as Record<string, { options?: Array<{ value: string; label: string }> }>),
     ...(surveyItems.unscored_items as Record<string, { options?: Array<{ value: string; label: string }> }>),
   };
-  const opt = all[itemKey]?.options?.find((o) => o.value === value);
-  return opt?.label ?? value;
+  const options = all[itemKey]?.options;
+  if (!options) return value;
+  // 복수 선택(multi) 항목은 콤마 결합 값 — 각각 라벨로 변환해 " · "로 연결
+  return value
+    .split(",")
+    .filter(Boolean)
+    .map((v) => options.find((o) => o.value === v)?.label ?? v)
+    .join(" · ");
 }

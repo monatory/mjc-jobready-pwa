@@ -74,6 +74,7 @@
     "region": {
       "label": "희망지역",
       "roles": ["FILTER"],
+      "multi": true,
       "options": [
         { "value": "SEOUL", "label": "서울" },
         { "value": "GYEONGGI", "label": "경기" },
@@ -92,6 +93,7 @@
     "desired_job_group": {
       "label": "희망직무 분야",
       "roles": ["FILTER", "RESEARCH"],
+      "multi": true,
       "options": [
         { "value": "OFFICE_ADMIN", "label": "사무행정 (경영지원·행정·문서)" },
         { "value": "ACCOUNTING", "label": "회계·세무 사무" },
@@ -123,8 +125,9 @@
       "note": "(연구 연계) 방향전환형(N) 학생만 노출 — 전환 시점 분포로 '늦은 전환의 비용'(FGI 주제 4) 정량 검증, 로드맵 조기 안내 근거. 점수 미반영"
     },
     "career_shift_reason": {
-      "label": "전공과 다른 분야를 생각하게 된 가장 큰 계기",
+      "label": "전공과 다른 분야를 생각하게 된 계기",
       "roles": ["RESEARCH"],
+      "multi": true,
       "visible_if": { "item": "major_link", "value": "N" },
       "options": [
         { "value": "MAJOR_MARKET", "label": "전공 분야 채용·전망이 좋지 않아서" },
@@ -136,8 +139,9 @@
       "note": "(연구 연계) 비전공 진로 전환 동기 — FGI 전환 동기 문항의 정량판. 점수 미반영"
     },
     "prep_difficulty": {
-      "label": "취업 준비에서 가장 어려운 점",
+      "label": "취업 준비에서 어려운 점",
       "roles": ["RESEARCH"],
+      "multi": true,
       "options": [
         { "value": "NO_INFO", "label": "무엇부터 준비해야 할지 모르겠다 (정보 부족)" },
         { "value": "CERT_BURDEN", "label": "자격증 준비가 부담된다" },
