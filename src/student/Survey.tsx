@@ -1,5 +1,5 @@
 // STEP 2 — 기본 정보 + 기본 설문(배점표 6문항, 계획서 §3-1) + 비점수 항목(§3-2)
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { scoredItemEntries, surveyItems } from "../lib/dataLoader";
@@ -20,10 +20,11 @@ const CERT_STATUS = (surveyItems.certification_entry.status_values as Array<{ va
 
 export default function Survey() {
   const navigate = useNavigate();
-  if (!getConsent()) {
-    // 동의 없이 직접 진입 시 STEP 1로 (진입 가드)
-    navigate("/", { replace: true });
-  }
+  const consented = getConsent();
+  useEffect(() => {
+    // 동의 없이 직접 진입 시 STEP 1로 (진입 가드) — 렌더 중 navigate 호출 금지(React 경고 방지)
+    if (!consented) navigate("/", { replace: true });
+  }, [consented, navigate]);
 
   const [profile, setProfileState] = useState(
     getProfile() ?? { student_id: "", name: "", dept: "", grade: "" }
@@ -63,8 +64,18 @@ export default function Survey() {
     navigate("/diagnostic");
   };
 
-  const unscoredRadio = (key: "region" | "major_link") => {
-    const item = surveyItems.unscored_items[key] as { label: string; options: Array<{ value: string; label: string }> };
+  // 비점수 선택형 항목 공통 렌더러 — visible_if는 설문 응답·비점수 응답 어느 쪽이든 참조 가능
+  const unscoredRadio = (key: string) => {
+    const item = (surveyItems.unscored_items as Record<string, {
+      label: string;
+      options?: Array<{ value: string; label: string }>;
+      visible_if?: { item: string; value: string };
+    }>)[key];
+    if (!item?.options) return null;
+    if (item.visible_if) {
+      const v = answers[item.visible_if.item] ?? unscored[item.visible_if.item];
+      if (v !== item.visible_if.value) return null;
+    }
     return (
       <div className="field">
         <label className="field__label">{item.label} <span className="optional">(선택)</span></label>
@@ -171,6 +182,10 @@ export default function Survey() {
           <h2 className="card__title">C. 추가 정보 <span className="optional">(선택 — 상담·매칭에 활용)</span></h2>
           {unscoredRadio("region")}
           {unscoredRadio("major_link")}
+          {/* 연구 연계 문항(비점수) — 방향전환형(N) 선택 시에만 전환 시기·계기 노출 */}
+          {unscoredRadio("career_shift_timing")}
+          {unscoredRadio("career_shift_reason")}
+          {unscoredRadio("desired_job_group")}
           <div className="field">
             <label className="field__label">희망직무 <span className="optional">(선택)</span></label>
             <input
@@ -180,23 +195,9 @@ export default function Survey() {
               onChange={(e) => pickUnscored("desired_job", e.target.value)}
             />
           </div>
-          {answers.career_direction === "FURTHER_STUDY_STARTUP" && (
-            <div className="field">
-              <label className="field__label">진학·창업 구분 <span className="optional">(선택)</span></label>
-              <div className="option-row">
-                {(surveyItems.unscored_items.non_employment_type.options as Array<{ value: string; label: string }>).map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    className={`chip ${unscored.non_employment_type === o.value ? "chip--on" : ""}`}
-                    onClick={() => pickUnscored("non_employment_type", o.value)}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {unscoredRadio("non_employment_type")}
+          {unscoredRadio("prep_difficulty")}
+          {unscoredRadio("roadmap_demand")}
           <div className="field">
             <label className="field__label">자격증 <span className="optional">(선택 — 보유/준비/목표 상태 그대로)</span></label>
             {certs.map((c, i) => (

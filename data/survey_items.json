@@ -89,11 +89,74 @@
         { "value": "N", "label": "전공과 다른 분야로 (방향전환형)" }
       ]
     },
+    "desired_job_group": {
+      "label": "희망직무 분야",
+      "roles": ["FILTER", "RESEARCH"],
+      "options": [
+        { "value": "OFFICE_ADMIN", "label": "사무행정 (경영지원·행정·문서)" },
+        { "value": "ACCOUNTING", "label": "회계·세무 사무" },
+        { "value": "SAFETY_FACILITY", "label": "총무·안전관리" },
+        { "value": "SERVICE", "label": "서비스직 (호텔·항공·판매·응대)" },
+        { "value": "MAJOR_FIELD", "label": "내 전공 분야 직무" },
+        { "value": "IT_DESIGN", "label": "IT·디자인·콘텐츠" },
+        { "value": "UNDECIDED", "label": "아직 모르겠음" },
+        { "value": "OTHER", "label": "기타" }
+      ],
+      "note": "(연구 연계) 범용직무 로드맵 연구(직무로드맵 구축 연구, 2026)의 4대 직무군 축과 정합 — 프로그램 매칭 FILTER + 직무군별 수요 통계. 점수 미반영"
+    },
     "desired_job": {
       "label": "희망직무",
       "roles": ["FILTER"],
       "type": "text",
       "note": "자유입력 — 직무별 대상자 검색·채용공고·상담 매칭용"
+    },
+    "career_shift_timing": {
+      "label": "전공과 다른 분야를 생각하게 된 시기",
+      "roles": ["RESEARCH"],
+      "visible_if": { "item": "major_link", "value": "N" },
+      "options": [
+        { "value": "BEFORE_ENTRY", "label": "입학 전부터" },
+        { "value": "YEAR_1", "label": "1학년 때" },
+        { "value": "YEAR_2", "label": "2학년 때" },
+        { "value": "FINAL_YEAR", "label": "졸업학년이 되어서" }
+      ],
+      "note": "(연구 연계) 방향전환형(N) 학생만 노출 — 전환 시점 분포로 '늦은 전환의 비용'(FGI 주제 4) 정량 검증, 로드맵 조기 안내 근거. 점수 미반영"
+    },
+    "career_shift_reason": {
+      "label": "전공과 다른 분야를 생각하게 된 가장 큰 계기",
+      "roles": ["RESEARCH"],
+      "visible_if": { "item": "major_link", "value": "N" },
+      "options": [
+        { "value": "MAJOR_MARKET", "label": "전공 분야 채용·전망이 좋지 않아서" },
+        { "value": "INTEREST", "label": "흥미·적성이 다른 곳에 있어서" },
+        { "value": "EXPERIENCE", "label": "아르바이트·경험에서 다른 적성을 발견해서" },
+        { "value": "CONDITIONS", "label": "급여·근무조건이 더 나아 보여서" },
+        { "value": "OTHER", "label": "기타" }
+      ],
+      "note": "(연구 연계) 비전공 진로 전환 동기 — FGI 전환 동기 문항의 정량판. 점수 미반영"
+    },
+    "prep_difficulty": {
+      "label": "취업 준비에서 가장 어려운 점",
+      "roles": ["RESEARCH"],
+      "options": [
+        { "value": "NO_INFO", "label": "무엇부터 준비해야 할지 모르겠다 (정보 부족)" },
+        { "value": "CERT_BURDEN", "label": "자격증 준비가 부담된다" },
+        { "value": "NO_EXPERIENCE", "label": "실무 경험을 쌓을 기회가 없다" },
+        { "value": "NO_TIME", "label": "시간이 부족하다" },
+        { "value": "COST", "label": "비용이 부담된다" },
+        { "value": "NONE", "label": "특별히 어려운 점 없다" }
+      ],
+      "note": "(연구 연계) 준비 장애요인 — FGI 주제 1(정보의 공백)·주제 3(경험 증빙) 정량화, 취약영역별 지원 설계 근거. 점수 미반영"
+    },
+    "roadmap_demand": {
+      "label": "단계별 준비 경로(로드맵) 안내가 제공된다면",
+      "roles": ["RESEARCH"],
+      "options": [
+        { "value": "WILL_USE", "label": "꼭 활용하고 싶다" },
+        { "value": "MAYBE", "label": "참고할 것 같다" },
+        { "value": "NO_NEED", "label": "필요 없다" }
+      ],
+      "note": "(연구 연계) 범용직무 로드맵 수요 직접 근거 — 로드맵 배포·프로그램 설계 우선순위 판단. 점수 미반영"
     },
     "non_employment_type": {
       "label": "진학·창업 구분",

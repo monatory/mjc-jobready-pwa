@@ -207,6 +207,31 @@ body {
   gap: 5px;
   margin-bottom: 12px;
 }
+/* 개인정보 수집·이용 고지(4요소) — STEP 1 동의 카드 */
+.consent-terms {
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 0.8rem;
+}
+.consent-terms > div {
+  display: flex;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.consent-terms > div + div {
+  border-top: 1px solid var(--line);
+}
+.consent-terms dt {
+  flex: 0 0 64px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.consent-terms dd {
+  margin: 0;
+  color: var(--muted);
+}
 .agree {
   display: flex;
   gap: 10px;

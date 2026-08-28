@@ -75,17 +75,38 @@ export default function Start() {
         </section>
 
         <section className="card">
-          <h2 className="card__title">안내사항</h2>
+          <h2 className="card__title">응답 전 안내</h2>
           <ul className="notice-list">
             <li>정답은 없습니다. 지금 상태 그대로 답해 주세요.</li>
             <li>결과는 취업지원을 위한 참고자료이며, 학생의 선택을 제한하지 않습니다.</li>
-            <li>입력한 정보는 진로·취업 상담과 맞춤형 프로그램 안내에만 사용됩니다.</li>
           </ul>
+          {/* 개인정보 수집·이용 고지 4요소(항목·목적·기간·거부권) + 익명 통계 연구 활용 고지 — 2026-08-28 확정 */}
+          <dl className="consent-terms">
+            <div>
+              <dt>수집 항목</dt>
+              <dd>학번, 성명, 학과·학년, 설문 응답, 자격증 정보</dd>
+            </div>
+            <div>
+              <dt>이용 목적</dt>
+              <dd>진로·취업 진단과 맞춤형 상담·프로그램 연계, 취업지원 개선</dd>
+            </div>
+            <div>
+              <dt>보유 기간</dt>
+              <dd>졸업 후 3년까지</dd>
+            </div>
+            <div>
+              <dt>제공·활용</dt>
+              <dd>
+                응답 내용은 외부에 제공되지 않으며, 개인을 알아볼 수 없게 처리한 통계는 교내
+                연구·정책 자료로 활용될 수 있습니다.
+              </dd>
+            </div>
+          </dl>
           <label className="agree">
             <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
             <span>
-              안내사항을 확인했으며, 진단 결과와 입력 정보를 진로·취업 상담 목적으로 열람하는 것에
-              동의합니다. <em>(동의 여부는 진단 점수에 영향을 주지 않습니다)</em>
+              안내 내용을 확인했으며, 위 목적의 개인정보 수집·이용에 동의합니다.{" "}
+              <em>(동의하지 않으셔도 불이익은 없으나, 진단 서비스는 이용하실 수 없습니다)</em>
             </span>
           </label>
           <button className="btn btn--primary btn--block" disabled={!agreed} onClick={goNext}>

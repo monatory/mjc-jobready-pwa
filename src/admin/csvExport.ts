@@ -108,4 +108,22 @@ export function exportSheet(sheetKey: string, students: StudentRecord[]): void {
   downloadCsv(`MJC-READY_${sheetKey}_${new Date().toISOString().slice(0, 10)}.csv`, buildRows(sheetKey, students));
 }
 
+/**
+ * 연구용 익명 추출 — 학번을 익명 일련번호(R001…)로 치환하고 성명을 제거해 내보낸다.
+ * 교내 연구 제공은 이 추출본만 사용(투트랙: 운영=실명 / 연구=익명). 동의 화면의
+ * "개인을 알아볼 수 없게 처리한 통계는 교내 연구·정책 자료로 활용" 고지가 근거.
+ */
+export function exportSheetForResearch(sheetKey: string, students: StudentRecord[]): void {
+  const anonymized = students.map((s, i) => ({
+    ...s,
+    student_id: `R${String(i + 1).padStart(3, "0")}`,
+    name: "",
+  }));
+  const rows = buildRows(sheetKey, anonymized);
+  // 성명 컬럼은 값 비움에 그치지 않고 컬럼 자체를 제거
+  const nameIdx = SHEETS[sheetKey].findIndex((c) => c.key === "name");
+  const cleaned = nameIdx < 0 ? rows : rows.map((r) => r.filter((_, i) => i !== nameIdx));
+  downloadCsv(`MJC-READY_연구용익명_${sheetKey}_${new Date().toISOString().slice(0, 10)}.csv`, cleaned);
+}
+
 export const sheetKeys = Object.keys(SHEETS);

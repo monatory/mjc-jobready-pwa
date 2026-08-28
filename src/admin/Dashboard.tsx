@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { mockStudents, surveyAnswerLabel, type StudentRecord } from "./mockStudents";
-import { exportSheet, sheetKeys } from "./csvExport";
+import { exportSheet, exportSheetForResearch, sheetKeys } from "./csvExport";
 import { recommendationMaster, domainLabels, levelRules } from "../lib/dataLoader";
 
 type Section = "overview" | "students" | "recommend" | "download";
@@ -290,12 +290,20 @@ export default function Dashboard() {
               계획서 §6-2의 5개 Sheet 정의(data/excel_columns.json)대로 원자료를 추출합니다. UTF-8 BOM — Excel 한글 호환.
               시범은 Sheet별 CSV, 본 구현 시 xlsx 다중 시트 1파일로 통합(제안 12건-⑥). 다운로드는 현재 필터와 무관하게 전체 기준.
             </p>
+            <p className="muted">
+              <strong>운영용(실명)</strong>은 학번·성명이 포함된 개인정보 파일 — 접근 제한된 폴더에만 보관하세요.
+              <strong> 연구용(익명)</strong>은 학번을 익명 일련번호(R001…)로 치환하고 성명을 제거한 추출본 —
+              교내 연구 제공은 반드시 이 파일만 사용합니다.
+            </p>
             <div className="dl-grid">
               {sheetKeys.map((k) => (
                 <div className="card dl-card" key={k}>
                   <strong>{k}</strong>
                   <button className="btn btn--primary" onClick={() => exportSheet(k, students)}>
-                    CSV 다운로드
+                    운영용 CSV (실명)
+                  </button>
+                  <button className="btn btn--ghost" onClick={() => exportSheetForResearch(k, students)}>
+                    연구용 CSV (익명)
                   </button>
                 </div>
               ))}

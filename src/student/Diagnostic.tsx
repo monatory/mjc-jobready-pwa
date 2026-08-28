@@ -1,5 +1,5 @@
 // STEP 3 — 보조 진단 27문항 (5점 척도, 화면당 1문항 자동 진행)
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { diagItems, diagScale, domainLabels } from "../lib/dataLoader";
@@ -7,9 +7,11 @@ import { getSurvey, getDiag, setDiag } from "../lib/sessionState";
 
 export default function Diagnostic() {
   const navigate = useNavigate();
-  if (Object.keys(getSurvey()).length === 0) {
-    navigate("/survey", { replace: true }); // 설문 없이 진입 시 STEP 2로 (진입 가드)
-  }
+  const hasSurvey = Object.keys(getSurvey()).length > 0;
+  useEffect(() => {
+    // 설문 없이 진입 시 STEP 2로 (진입 가드) — 렌더 중 navigate 호출 금지(React 경고 방지)
+    if (!hasSurvey) navigate("/survey", { replace: true });
+  }, [hasSurvey, navigate]);
 
   const [answers, setAnswers] = useState<Record<string, number>>(getDiag());
   const firstUnanswered = useMemo(
