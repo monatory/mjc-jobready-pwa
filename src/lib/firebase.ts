@@ -13,7 +13,7 @@
  * Web SDK의 apiKey는 프론트에 노출되는 것이 정상 — 보안은 Security Rules + Authorized Domains가 담당.
  */
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { initializeFirestore, type Firestore } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, type Auth } from "firebase/auth";
 
 // ▼▼▼ mjc-ready-pwa 프로젝트 설정 (2026-08-30 사용자 제공) ▼▼▼
@@ -42,6 +42,7 @@ export const COL = {
 } as const;
 
 let _app: FirebaseApp | null = null;
+let _db: Firestore | null = null;
 
 export function getApp(): FirebaseApp {
   if (!_app) _app = initializeApp(firebaseConfig);
@@ -49,7 +50,10 @@ export function getApp(): FirebaseApp {
 }
 
 export function getDb(): Firestore {
-  return getFirestore(getApp());
+  // ignoreUndefinedProperties: 선택 필드(연계일·메모 등)가 비어 undefined로 남아도
+  // 쓰기가 조용히 실패하지 않도록 — 2026-08-30 라이브 테스트에서 발견된 유실 원인 수정
+  if (!_db) _db = initializeFirestore(getApp(), { ignoreUndefinedProperties: true });
+  return _db;
 }
 
 export function getAuthInst(): Auth {
