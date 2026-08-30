@@ -2,7 +2,8 @@
 // UTF-8 BOM으로 Excel 한글 호환. 시범: Sheet별 CSV 파일 / 본 구현: xlsx 다중 시트 1파일(제안 12건-⑥).
 import excelColumnsJson from "../../data/excel_columns.json";
 import { surveyItems } from "../lib/dataLoader";
-import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
+import { mockStudents, surveyAnswerLabel, type StudentRecord } from "./mockStudents";
+import { loadOutreach, statusOf, OUTREACH_LABELS } from "./outreach";
 
 type ColumnDef = { key: string; label: string };
 const SHEETS = excelColumnsJson.sheets as Record<string, ColumnDef[]>;
@@ -35,6 +36,7 @@ function downloadCsv(filename: string, rows: string[][]): void {
 function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
   const cols = SHEETS[sheetKey];
   const header = cols.map((c) => c.label);
+  const outreach = loadOutreach(); // 상담사 연락 상태 — 내보내기 시점 스냅샷
 
   const rowsOf = (s: StudentRecord): Array<Record<string, unknown>> => {
     switch (sheetKey) {
@@ -45,6 +47,9 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
             name: s.name,
             dept: s.dept,
             grade: s.grade,
+            phone: s.phone,
+            outreach_status: OUTREACH_LABELS[statusOf(outreach, s.student_id)],
+            outreach_memo: outreach[s.student_id]?.memo ?? "",
             semester: s.semester,
             career_direction: surveyAnswerLabel("career_direction", s.survey.career_direction),
             major_link: surveyAnswerLabel("major_link", s.unscored.major_link),
@@ -103,7 +108,7 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
           owner: a.owner === "CAREER" ? "진로컨설턴트" : "취업컨설턴트",
           priority: a.priority,
           active: a.active ? "ON" : "OFF",
-          counsel_status: "미연계",
+          counsel_status: OUTREACH_LABELS[statusOf(outreach, s.student_id)],
         }));
       default:
         return [];
@@ -116,8 +121,25 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
   return [header, ...dataRows];
 }
 
-export function exportSheet(sheetKey: string, students: StudentRecord[]): void {
-  downloadCsv(`MJC-READY_${sheetKey}_${new Date().toISOString().slice(0, 10)}.csv`, buildRows(sheetKey, students));
+/** 지정한 key 컬럼들을 헤더·데이터 행에서 통째로 제거 */
+function dropColumns(sheetKey: string, rows: string[][], keys: string[]): string[][] {
+  const dropIdx = new Set(
+    SHEETS[sheetKey].map((c, i) => (keys.includes(c.key) ? i : -1)).filter((i) => i >= 0)
+  );
+  return dropIdx.size === 0 ? rows : rows.map((r) => r.filter((_, i) => !dropIdx.has(i)));
+}
+
+// 연락 기록(연락상태·상담메모)은 상담사 전용 데이터 — 담당자(행정) 다운로드에는 포함 금지 (2026-08-30)
+const OUTREACH_KEYS = ["outreach_status", "outreach_memo"];
+
+export function exportSheet(
+  sheetKey: string,
+  students: StudentRecord[],
+  opts: { includeOutreach?: boolean } = {}
+): void {
+  let rows = buildRows(sheetKey, students);
+  if (!opts.includeOutreach) rows = dropColumns(sheetKey, rows, OUTREACH_KEYS);
+  downloadCsv(`MJC-READY_${sheetKey}_${new Date().toISOString().slice(0, 10)}.csv`, rows);
 }
 
 /**
@@ -126,15 +148,19 @@ export function exportSheet(sheetKey: string, students: StudentRecord[]): void {
  * "개인을 알아볼 수 없게 처리한 통계는 교내 연구·정책 자료로 활용" 고지가 근거.
  */
 export function exportSheetForResearch(sheetKey: string, students: StudentRecord[]): void {
+  // 익명 일련번호는 전체 명단 기준으로 고정 — 필터 명단·시트별 내보내기 사이에서도
+  // 같은 학생 = 같은 R번호가 유지되어야 연구자가 시트 간 결합(join) 가능.
+  // (Firestore 연동 시 전체 로스터 기준 결정론적 매핑으로 교체)
+  const anonIndex = new Map(mockStudents.map((s, i) => [s.student_id, i]));
   const anonymized = students.map((s, i) => ({
     ...s,
-    student_id: `R${String(i + 1).padStart(3, "0")}`,
+    student_id: `R${String((anonIndex.get(s.student_id) ?? i) + 1).padStart(3, "0")}`,
     name: "",
+    phone: "",
   }));
   const rows = buildRows(sheetKey, anonymized);
-  // 성명 컬럼은 값 비움에 그치지 않고 컬럼 자체를 제거
-  const nameIdx = SHEETS[sheetKey].findIndex((c) => c.key === "name");
-  const cleaned = nameIdx < 0 ? rows : rows.map((r) => r.filter((_, i) => i !== nameIdx));
+  // 식별 가능 컬럼(성명·연락처)과 상담사 전용 컬럼(연락상태·상담메모)은 컬럼 자체를 제거
+  const cleaned = dropColumns(sheetKey, rows, ["name", "phone", ...OUTREACH_KEYS]);
   downloadCsv(`MJC-READY_연구용익명_${sheetKey}_${new Date().toISOString().slice(0, 10)}.csv`, cleaned);
 }
 

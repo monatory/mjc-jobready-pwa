@@ -19,7 +19,7 @@ export default function AppHeader({ step, stepName, resultMode }: Props) {
           <span className="app-header__logo">MJC</span>
           <div className="app-header__titles">
             <strong>명지전문대학</strong>
-            <span>학생지원처 AI융합진로지원센터</span>
+            <span>학생지원처 취·창업팀</span>
           </div>
         </div>
         {resultMode ? (

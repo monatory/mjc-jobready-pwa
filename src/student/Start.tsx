@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { getResumeState, setConsent, getConsent, clearAll } from "../lib/sessionState";
+import { diagItems, scoredItemEntries } from "../lib/dataLoader";
 
 export default function Start() {
   const navigate = useNavigate();
@@ -41,11 +42,11 @@ export default function Start() {
           </p>
           <div className="stat-row">
             <div className="stat">
-              <strong>6</strong>
+              <strong>{scoredItemEntries.length}</strong>
               <span>기본 설문</span>
             </div>
             <div className="stat">
-              <strong>27</strong>
+              <strong>{diagItems.length}</strong>
               <span>진단 문항</span>
             </div>
             <div className="stat">
@@ -66,7 +67,7 @@ export default function Start() {
               <strong>STEP 2 · 기본 정보와 설문</strong> — 진로 방향·취업 준비 상태를 묻는 짧은 설문
             </li>
             <li>
-              <strong>STEP 3 · 진로준비 진단</strong> — 27문항으로 지금 나의 준비 영역 확인
+              <strong>STEP 3 · 진로준비 진단</strong> — {diagItems.length}문항으로 지금 나의 준비 영역 확인
             </li>
             <li>
               <strong>결과지</strong> — 현재 단계(Level)·보완영역·추천 활동·상담 연결 안내
@@ -79,12 +80,15 @@ export default function Start() {
           <ul className="notice-list">
             <li>정답은 없습니다. 지금 상태 그대로 답해 주세요.</li>
             <li>결과는 취업지원을 위한 참고자료이며, 학생의 선택을 제한하지 않습니다.</li>
+            <li>
+              <strong>따로 찾아가지 않아도 돼요</strong> — 상담을 희망하면 잡카페 컨설턴트가 먼저 연락드립니다.
+            </li>
           </ul>
           {/* 개인정보 수집·이용 고지 4요소(항목·목적·기간·거부권) + 익명 통계 연구 활용 고지 — 2026-08-28 확정 */}
           <dl className="consent-terms">
             <div>
               <dt>수집 항목</dt>
-              <dd>학번, 성명, 학과·학년, 설문 응답, 자격증 정보</dd>
+              <dd>학번, 성명, 학과·학년, 휴대전화, 설문 응답, 자격증 정보</dd>
             </div>
             <div>
               <dt>이용 목적</dt>

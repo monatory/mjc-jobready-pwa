@@ -755,11 +755,22 @@ body {
 }
 
 /* ── 인쇄 ── */
+.print-head {
+  display: none; /* 인쇄 시에만 표시 */
+}
 @media print {
   .app-header,
   .actions,
   .cta-card .btn {
     display: none !important;
+  }
+  .print-head {
+    display: block;
+    font-size: 0.8rem;
+    color: #555;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 6px;
+    margin-bottom: 10px;
   }
   body {
     background: #fff;
@@ -1175,4 +1186,220 @@ body {
   .admin-detail__grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── 관리자 로그인·계정 (2026-08-30) ─────────────────────────── */
+.admin-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: #f4f6fa;
+}
+.admin-login__card {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-login__brand {
+  justify-content: center;
+}
+.admin-login__tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.admin-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.admin-login__msg {
+  font-size: 0.85rem;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+}
+.admin-login__msg--ok {
+  background: #e7f6ec;
+  color: #1c7a3d;
+}
+.admin-login__msg--err {
+  background: #fdecec;
+  color: #c0392b;
+}
+.admin__user {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+.admin__user strong {
+  color: #fff;
+}
+.admin__user > span {
+  color: #b6bcc8;
+  font-size: 0.75rem;
+}
+.admin__user-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.acct-status {
+  font-size: 0.78rem;
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.acct-status--active {
+  background: #e7f6ec;
+  color: #1c7a3d;
+}
+.acct-status--pending {
+  background: #fff4e0;
+  color: #b06000;
+}
+.acct-status--disabled {
+  background: #ececf0;
+  color: #7a7f8c;
+}
+.acct-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filter-bar__hint {
+  align-self: center;
+}
+
+/* 기본정보 필드 보조 안내 (휴대전화 등) */
+.field__hint {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: #7a7f8c;
+}
+
+/* ── 상담사 아웃리치(연락 관리) — 2026-08-30 ─────────────────── */
+.chip--queue {
+  font-weight: 700;
+  border-color: var(--orange);
+}
+.chip--sm {
+  padding: 5px 10px;
+  font-size: 0.76rem;
+}
+.outreach-badge {
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.outreach-badge--none {
+  background: #fdecea;
+  color: #c0392b;
+  font-weight: 700;
+}
+.outreach-badge--contacted {
+  background: #fff4e0;
+  color: #b06000;
+}
+.outreach-badge--reserved {
+  background: #e8f0fe;
+  color: #1a56b0;
+}
+.outreach-badge--done {
+  background: #e7f6ec;
+  color: #1c7a3d;
+}
+.outreach-badge--no_response {
+  background: #ececf0;
+  color: #7a7f8c;
+}
+.kpi--urgent strong {
+  color: #c0392b;
+}
+.admin-detail__phone {
+  margin: 2px 0 6px;
+  font-size: 0.88rem;
+}
+.admin-detail__phone a {
+  color: var(--navy);
+  font-weight: 700;
+  text-decoration: none;
+}
+.outreach-editor {
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.outreach-editor__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.outreach-editor__chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.outreach-editor__memo {
+  resize: vertical;
+  font-family: inherit;
+}
+.outreach-editor__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.outreach-editor__saved {
+  color: var(--green);
+}
+.admin-table a {
+  color: var(--navy);
+}
+
+/* 결과지 상담 CTA — "먼저 연락드립니다" 강조 */
+.cta-card__note {
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.83rem;
+  margin: 8px 0;
+}
+.wait-count {
+  color: #c0392b;
+}
+
+/* ── 상담사 워크스페이스 (#/counsel) — 관리자 화면과 시각적으로 구분 (초록 계열) ── */
+.admin--counsel .admin__side {
+  background: #123d2b;
+}
+.admin--counsel .admin__nav-item--on {
+  background: #1c7a3d;
+}
+.admin--counsel .app-header__logo {
+  background: #1c7a3d;
+}
+.admin__banner--counsel {
+  background: #e7f6ec;
+  border-color: #bfe5cc;
+  color: #14532d;
+}
+.admin__nav-item--counsel {
+  opacity: 0.85;
+  font-size: 0.82rem;
 }

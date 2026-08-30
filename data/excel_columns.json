@@ -7,6 +7,7 @@
       { "key": "name", "label": "성명" },
       { "key": "dept", "label": "학과" },
       { "key": "grade", "label": "학년" },
+      { "key": "phone", "label": "연락처" },
       { "key": "semester", "label": "학기" },
       { "key": "career_direction", "label": "진로방향" },
       { "key": "major_link", "label": "전공연계" },
@@ -22,6 +23,8 @@
       { "key": "region", "label": "희망취업지역" },
       { "key": "gov_link", "label": "정부지원의향" },
       { "key": "counsel_wish", "label": "상담희망" },
+      { "key": "outreach_status", "label": "연락상태" },
+      { "key": "outreach_memo", "label": "상담메모" },
       { "key": "consent_view", "label": "정보열람동의" }
     ],
     "02_설문원자료": [

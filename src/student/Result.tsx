@@ -16,6 +16,7 @@ import {
 import { getProfile, getSurvey, getDiag, clearAll } from "../lib/sessionState";
 
 const rules = levelRules as unknown as {
+  jas_cutoff_level3: number;
   weak_area: { threshold: number; max_count: number };
 };
 const templates = resultTemplates as unknown as {
@@ -30,7 +31,8 @@ function JasGauge({ score }: { score: number }) {
   const x = 100 + 80 * Math.cos(rad);
   const y = 95 - 80 * Math.sin(rad);
   const large = angle > 180 ? 1 : 0;
-  const tone = score >= 70 ? "#1a7f37" : score >= 40 ? "#b26a00" : "#8a8f98";
+  // 초록 기준은 L3 컷오프(level_rules) — 70 하드코딩 금지 (§4)
+  const tone = score >= rules.jas_cutoff_level3 ? "#1a7f37" : score >= 40 ? "#b26a00" : "#8a8f98";
   return (
     <svg viewBox="0 0 200 110" className="gauge" role="img" aria-label={`구직활성도 ${score}점`}>
       <path d="M 20 95 A 80 80 0 0 1 180 95" fill="none" stroke="#e6e9f0" strokeWidth="14" strokeLinecap="round" />
@@ -98,6 +100,10 @@ export default function Result() {
     <div className="page">
       <AppHeader resultMode />
       <main className="container">
+        {/* 인쇄 전용 머리글 — 화면 헤더는 인쇄에서 숨겨지므로 기관명·발급일을 별도 표기 */}
+        <p className="print-head">
+          명지전문대학 학생지원처 취·창업팀 · MJC-READY 진로·취업 상태진단 결과지 (발급일 {new Date().toISOString().slice(0, 10)})
+        </p>
         <section className={`card level-card level-card--l${r.level}`}>
           <p className="level-card__route">{isNonEmployment ? "진학·창업 Route" : "취업준비 Route"}</p>
           <h1 className="level-card__title">{tpl.title}</h1>
@@ -175,9 +181,19 @@ export default function Result() {
                 ? "취업 의지가 확인된 학생에게는 취업컨설턴트가 우선 연결됩니다."
                 : "진로 방향 정리는 진로컨설턴트와의 상담이 가장 빠릅니다."}
           </p>
+          {survey.counsel_wish === "YES" && (
+            <p className="cta-card__note">
+              상담을 희망하셨어요 — 잡카페 {tpl.consultant.replace("잡카페 ", "")}가 입력하신 연락처로
+              <strong> 먼저 연락드립니다.</strong> 따로 신청하지 않아도 괜찮아요.
+            </p>
+          )}
           <button
             className="btn btn--primary btn--block"
-            onClick={() => window.alert("시범운영: 상담 신청은 잡카페 방문 또는 센터 연락처로 접수해 주세요.")}
+            onClick={() =>
+              window.alert(
+                "시범운영: 잡카페(학생회관)에 바로 방문하셔도 되고, 상담 희망으로 응답하신 경우 컨설턴트가 먼저 연락드립니다."
+              )
+            }
           >
             잡카페 상담 신청하기
           </button>

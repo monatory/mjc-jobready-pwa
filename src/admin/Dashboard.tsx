@@ -1,113 +1,55 @@
-// 관리자 대시보드 — 계획서 §6 (Dashboard·대상자 필터·학생 상세·추천활동 관리·Excel 다운로드)
+// 관리자 화면(#/admin) — 담당자(행정)·마스터 전용. 계획서 §6.
+// 상담사 계열 계정은 전용 워크스페이스(#/counsel)로 자동 이동하며,
+// 이 화면에는 연락 기록(연락상태·상담 메모)이 일절 노출되지 않는다 (2026-08-30 사용자 확정).
 // 시범: mock 40명(실제 엔진 판정)을 미리보기 모드로 표시. Firestore 연동 시 데이터 소스만 교체.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { mockStudents, surveyAnswerLabel, type StudentRecord } from "./mockStudents";
-import { exportSheet, exportSheetForResearch, sheetKeys, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
-import { recommendationMaster, domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
+import { mockStudents } from "./mockStudents";
+import { exportSheet, exportSheetForResearch, sheetKeys } from "./csvExport";
+import { recommendationMaster, domainLabels, levelRules } from "../lib/dataLoader";
 
-type Section = "overview" | "students" | "recommend" | "download";
-
-const LEVEL_NAMES: Record<number, string> = { 1: "진로탐색", 2: "진로설정", 3: "취업준비", 4: "실전취업" };
 const rules = levelRules as unknown as { jas_cutoff_level3: number };
+import { getSession, logout, canAccess, isCounselSide, homeRoute, ROLE_LABELS, type AdminSession } from "./auth";
+import AdminLogin from "./Login";
+import Accounts from "./Accounts";
+import PasswordModal from "./PasswordModal";
+import StudentsPanel, { LEVEL_NAMES } from "./StudentsPanel";
 
-// 설문 정의에서 선택지 목록을 가져오는 헬퍼 (코드 하드코딩 금지 — §4)
-type Opt = { value: string; label: string };
-const optionsOf = (key: string): Opt[] => {
-  const all = {
-    ...(surveyItems.scored_items as Record<string, { options?: Opt[] }>),
-    ...(surveyItems.unscored_items as Record<string, { options?: Opt[] }>),
-  };
-  return all[key]?.options ?? [];
-};
-
-// ── 상세 필터 (2026-08-28 취·창업팀 요구 — 상담사가 대상자를 정밀 추출) ──
-interface AdvFilter {
-  majorLink: string;   // 전공진출형/방향전환형
-  homeRegion: string;  // 본가(거주지) 지역
-  region: string;      // 희망 취업 지역 (복수값 포함 매칭)
-  jobGroup: string;    // 희망직무 분야 (복수값 포함 매칭)
-  cert: string;        // OWNED=보유 있음 / PREPARING=준비·목표만 / NONE=미입력
-  certCat: string;     // 자격 분류 (OA/전공/어학/기타)
-  timing: string;      // 취업 희망시기
-  gov: string;         // 정부지원 연계의향
-}
-const EMPTY_ADV: AdvFilter = {
-  majorLink: "", homeRegion: "", region: "", jobGroup: "", cert: "", certCat: "", timing: "", gov: "",
-};
-
-const matchesAdv = (s: StudentRecord, f: AdvFilter): boolean => {
-  if (f.majorLink && s.unscored.major_link !== f.majorLink) return false;
-  if (f.homeRegion && s.unscored.home_region !== f.homeRegion) return false;
-  if (f.region && !(s.unscored.region ?? "").split(",").includes(f.region)) return false;
-  if (f.jobGroup && !(s.unscored.desired_job_group ?? "").split(",").includes(f.jobGroup)) return false;
-  if (f.cert === "OWNED" && !s.certs.some((c) => c.status === "OWNED")) return false;
-  if (f.cert === "PREPARING" && !(s.certs.length > 0 && !s.certs.some((c) => c.status === "OWNED"))) return false;
-  if (f.cert === "NONE" && s.certs.length > 0) return false;
-  if (f.certCat && !s.certs.some((c) => (c as { category?: string }).category === f.certCat)) return false;
-  if (f.timing && s.survey.employment_timing !== f.timing) return false;
-  if (f.gov && s.survey.gov_link !== f.gov) return false;
-  return true;
-};
-
-// ── 빠른 필터 프리셋 (계획서 §6-2) ─────────────────────────────
-const PRESETS: Array<{ key: string; label: string; fn: (s: StudentRecord) => boolean }> = [
-  {
-    key: "priority",
-    label: "취업지원 우선대상",
-    fn: (s) =>
-      s.survey.career_direction === "EMPLOYMENT" &&
-      s.result.jas >= rules.jas_cutoff_level3 &&
-      ["WITHIN_3M", "WITHIN_6M"].includes(s.survey.employment_timing),
-  },
-  { key: "l3", label: "Level 3", fn: (s) => s.result.level === 3 },
-  { key: "l4", label: "Level 4", fn: (s) => s.result.level === 4 },
-  { key: "counsel", label: "상담희망", fn: (s) => s.survey.counsel_wish === "YES" },
-  { key: "gov", label: "정부지원 연계 후보", fn: (s) => s.survey.gov_link === "USE" },
-  { key: "route", label: "진학·창업 Route", fn: (s) => s.result.routeTag === "FURTHER_STUDY_STARTUP" },
-];
+type Section = "overview" | "students" | "recommend" | "download" | "accounts";
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const students = mockStudents;
+  const [session, setSession] = useState<AdminSession | null>(getSession);
+  const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
-  const [preset, setPreset] = useState<string | null>(null);
-  const [levelFilter, setLevelFilter] = useState<number | null>(null);
-  const [deptFilter, setDeptFilter] = useState<string>("");
-  const [search, setSearch] = useState("");
-  const [adv, setAdv] = useState<AdvFilter>(EMPTY_ADV);
-  const [detail, setDetail] = useState<StudentRecord | null>(null);
   const [masterState, setMasterState] = useState(
     () => (recommendationMaster as { activities: Array<{ recommendation_code: string; name: string; owner: string; levels: number[]; weak_domains: string[]; priority: number; active: boolean; active_from: string; active_to: string; student_desc: string }> }).activities
   );
 
-  const depts = useMemo(() => [...new Set(students.map((s) => s.dept))].sort(), [students]);
-
-  const filtered = useMemo(() => {
-    let list = students;
-    if (preset) {
-      const p = PRESETS.find((x) => x.key === preset);
-      if (p) list = list.filter(p.fn);
-    }
-    if (levelFilter) list = list.filter((s) => s.result.level === levelFilter);
-    if (deptFilter) list = list.filter((s) => s.dept === deptFilter);
-    list = list.filter((s) => matchesAdv(s, adv));
-    if (search.trim())
-      list = list.filter((s) => s.name.includes(search.trim()) || s.student_id.includes(search.trim()));
-    return [...list].sort((a, b) => b.result.jas - a.result.jas);
-  }, [students, preset, levelFilter, deptFilter, adv, search]);
+  // 상담사 계열은 이 화면 접근 불가 — 전용 워크스페이스로 이동
+  useEffect(() => {
+    if (session && isCounselSide(session.role) && session.role !== "MASTER") navigate("/counsel", { replace: true });
+  }, [session, navigate]);
 
   // ── 집계 ──
   const kpi = useMemo(() => {
     const total = students.length;
     const byLevel = [1, 2, 3, 4].map((l) => students.filter((s) => s.result.level === l).length);
     const avgJas = Math.round(students.reduce((s, x) => s + x.result.jas, 0) / total);
-    const priority = students.filter(PRESETS[0].fn).length;
+    // 프리셋 "취업지원 우선대상"과 동일 정의: 진로=취업 AND JAS≥컷오프 AND 희망시기≤6개월
+    const priority = students.filter(
+      (s) =>
+        s.survey.career_direction === "EMPLOYMENT" &&
+        s.result.jas >= rules.jas_cutoff_level3 &&
+        ["WITHIN_3M", "WITHIN_6M"].includes(s.survey.employment_timing)
+    ).length;
     const counsel = students.filter((s) => s.survey.counsel_wish === "YES").length;
     const nonEmp = students.filter((s) => s.result.routeTag === "FURTHER_STUDY_STARTUP").length;
     return { total, byLevel, avgJas, priority, counsel, nonEmp };
   }, [students]);
 
+  const depts = useMemo(() => [...new Set(students.map((s) => s.dept))].sort(), [students]);
   const deptStats = useMemo(
     () =>
       depts.map((d) => {
@@ -125,6 +67,27 @@ export default function Dashboard() {
 
   const maxLevelCount = Math.max(...kpi.byLevel, 1);
 
+  // ── 인증 게이트 ──
+  if (!session)
+    return (
+      <AdminLogin
+        onLogin={(s) => {
+          setSession(s);
+          navigate(homeRoute(s.role), { replace: true });
+        }}
+      />
+    );
+
+  const sections = (
+    [
+      ["overview", "종합 현황"],
+      ["students", "대상자 필터·명단"],
+      ["recommend", "추천활동 관리"],
+      ["download", "데이터 다운로드"],
+      ["accounts", "담당자 계정 관리"],
+    ] as Array<[Section, string]>
+  ).filter(([key]) => canAccess(session.role, key));
+
   return (
     <div className="admin">
       <aside className="admin__side">
@@ -136,14 +99,7 @@ export default function Dashboard() {
           </div>
         </div>
         <nav className="admin__nav">
-          {(
-            [
-              ["overview", "종합 현황"],
-              ["students", "대상자 필터·명단"],
-              ["recommend", "추천활동 관리"],
-              ["download", "데이터 다운로드"],
-            ] as Array<[Section, string]>
-          ).map(([key, label]) => (
+          {sections.map(([key, label]) => (
             <button
               key={key}
               className={`admin__nav-item ${section === key ? "admin__nav-item--on" : ""}`}
@@ -152,7 +108,28 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
+          {session.role === "MASTER" && (
+            <button className="admin__nav-item admin__nav-item--counsel" onClick={() => navigate("/counsel")}>
+              상담사 워크스페이스 →
+            </button>
+          )}
         </nav>
+        <div className="admin__user">
+          <strong>{session.name}</strong>
+          <span>{ROLE_LABELS[session.role]}</span>
+          <div className="admin__user-actions">
+            {/* 마스터 비밀번호는 코드 고정 — 변경 버튼 비노출 */}
+            {session.role !== "MASTER" && (
+              <button className="btn btn--ghost btn--sm" onClick={() => setPwModal(true)}>비밀번호 변경</button>
+            )}
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => { logout(); setSession(null); setSection("overview"); }}
+            >
+              로그아웃
+            </button>
+          </div>
+        </div>
         <button className="admin__back" onClick={() => navigate("/")}>← 학생 화면으로</button>
       </aside>
 
@@ -219,122 +196,8 @@ export default function Dashboard() {
         {section === "students" && (
           <>
             <h1 className="admin__title">대상자 필터·명단</h1>
-            <div className="filter-bar">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.key}
-                  className={`chip ${preset === p.key ? "chip--on" : ""}`}
-                  onClick={() => setPreset(preset === p.key ? null : p.key)}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <div className="filter-bar">
-              {[1, 2, 3, 4].map((l) => (
-                <button
-                  key={l}
-                  className={`chip ${levelFilter === l ? "chip--on" : ""}`}
-                  onClick={() => setLevelFilter(levelFilter === l ? null : l)}
-                >
-                  Level {l}
-                </button>
-              ))}
-              <select className="input filter-bar__select" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
-                <option value="">전체 학과</option>
-                {depts.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-              <input
-                className="input filter-bar__search"
-                placeholder="이름·학번 검색"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-
-            {/* 상세 필터 — 상담사가 대상자를 정밀 추출 (전공연계·지역·직무분야·자격증 등) */}
-            <details className="card adv-filter" open>
-              <summary>상세 필터 {Object.values(adv).some(Boolean) && <span className="adv-filter__on">적용 중</span>}</summary>
-              <div className="adv-filter__grid">
-                {(
-                  [
-                    ["majorLink", "전공연계", optionsOf("major_link")],
-                    ["homeRegion", "본가지역", optionsOf("home_region")],
-                    ["region", "희망 취업 지역", optionsOf("region")],
-                    ["jobGroup", "희망직무 분야", optionsOf("desired_job_group")],
-                    ["timing", "취업 희망시기", optionsOf("employment_timing")],
-                    ["gov", "정부지원 의향", optionsOf("gov_link")],
-                    [
-                      "cert",
-                      "자격증",
-                      [
-                        { value: "OWNED", label: "보유 있음" },
-                        { value: "PREPARING", label: "준비·목표만" },
-                        { value: "NONE", label: "미입력" },
-                      ],
-                    ],
-                    ["certCat", "자격 분류", CERT_CATEGORIES],
-                  ] as Array<[keyof AdvFilter, string, Opt[]]>
-                ).map(([field, label, opts]) => (
-                  <label className="adv-filter__field" key={field}>
-                    <span>{label}</span>
-                    <select
-                      className="input"
-                      value={adv[field]}
-                      onChange={(e) => setAdv((prev) => ({ ...prev, [field]: e.target.value }))}
-                    >
-                      <option value="">전체</option>
-                      {opts.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-              <div className="adv-filter__actions">
-                <button className="btn btn--ghost" onClick={() => setAdv(EMPTY_ADV)}>필터 초기화</button>
-              </div>
-            </details>
-
-            <div className="filter-result-bar">
-              <p className="muted filter-count">{filtered.length}명 (JAS 높은 순)</p>
-              <div className="filter-result-bar__dl">
-                <button className="btn btn--primary btn--sm" onClick={() => exportSheet("01_학생상태", filtered)}>
-                  필터 결과 CSV (운영용)
-                </button>
-                <button className="btn btn--ghost btn--sm" onClick={() => exportSheetForResearch("01_학생상태", filtered)}>
-                  필터 결과 CSV (익명)
-                </button>
-              </div>
-            </div>
-            <div className="table-wrap card">
-              <table className="admin-table admin-table--hover">
-                <thead>
-                  <tr>
-                    <th>학번</th><th>성명</th><th>학과</th><th>학년</th><th>진로방향</th><th>전공연계</th>
-                    <th>JAS</th><th>Level</th><th>희망시기</th><th>상담</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((s) => (
-                    <tr key={s.student_id} onClick={() => setDetail(s)}>
-                      <td>{s.student_id}</td>
-                      <td><strong>{s.name}</strong></td>
-                      <td>{s.dept}</td>
-                      <td>{s.grade}</td>
-                      <td>{surveyAnswerLabel("career_direction", s.survey.career_direction)}</td>
-                      <td>{s.unscored.major_link === "Y" ? "전공진출" : s.unscored.major_link === "N" ? "방향전환" : "—"}</td>
-                      <td className="num">{s.result.jas}</td>
-                      <td><span className={`lv-badge lv-badge--l${s.result.level}`}>L{s.result.level} {LEVEL_NAMES[s.result.level]}</span></td>
-                      <td>{surveyAnswerLabel("employment_timing", s.survey.employment_timing)}</td>
-                      <td>{s.survey.counsel_wish === "YES" ? "희망" : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {/* 담당자(행정) 화면 — 연락 기록(연락상태·메모)은 비노출 */}
+            <StudentsPanel session={session} showOutreach={false} />
           </>
         )}
 
@@ -407,75 +270,17 @@ export default function Dashboard() {
             </div>
           </>
         )}
+
+        {section === "accounts" && session.role === "MASTER" && (
+          <Accounts
+            title="담당자 계정 관리"
+            description="담당자(행정) 계정의 가입 신청을 승인하거나 사용을 중지·삭제합니다. 상담사 계정은 상담사 워크스페이스에서 별도 관리합니다."
+            roles={["ADMIN"]} // 마스터 계정은 어떤 목록에도 노출하지 않음 (§6.4)
+          />
+        )}
       </main>
 
-      {detail && (
-        <div className="modal-backdrop" onClick={() => setDetail(null)}>
-          <div className="modal card admin-detail" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-detail__head">
-              <div>
-                <h3>{detail.name} <span className="muted">({detail.student_id} · {detail.dept} {detail.grade}학년)</span></h3>
-                <span className={`lv-badge lv-badge--l${detail.result.level}`}>
-                  Level {detail.result.level} · {LEVEL_NAMES[detail.result.level]}
-                </span>
-                {detail.result.routeTag === "FURTHER_STUDY_STARTUP" && <span className="lv-badge">진학·창업 Route</span>}
-              </div>
-              <button className="btn btn--ghost" onClick={() => setDetail(null)}>✕ 닫기</button>
-            </div>
-
-            <div className="admin-detail__grid">
-              <section>
-                <h4>지표</h4>
-                <p>JAS <strong>{detail.result.jas}</strong> · JRS <strong>{detail.result.jrs ?? "—"}</strong> · CDS <strong>{detail.result.cds ?? "—"}</strong></p>
-                <h4>판정 근거</h4>
-                <ul className="reason-list">
-                  {detail.result.reasons.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
-                <h4>영역 점수</h4>
-                <ul className="reason-list">
-                  {Object.entries(detail.result.domainScores).map(([d, v]) => (
-                    <li key={d}>
-                      {domainLabels[d]}: {v?.toFixed(1) ?? "—"}
-                      {detail.weak.some((w) => w.domain === d) ? " ← 보완영역" : ""}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-              <section>
-                <h4>설문 원응답</h4>
-                <ul className="reason-list">
-                  {Object.entries(detail.survey).map(([k, v]) => (
-                    <li key={k}>{surveyAnswerLabel(k, v)}</li>
-                  ))}
-                  <li>전공연계: {surveyAnswerLabel("major_link", detail.unscored.major_link)}</li>
-                  <li>
-                    본가 {surveyAnswerLabel("home_region", detail.unscored.home_region)} → 희망{" "}
-                    {surveyAnswerLabel("region", detail.unscored.region)}
-                  </li>
-                  <li>희망직무 분야: {surveyAnswerLabel("desired_job_group", detail.unscored.desired_job_group)}</li>
-                  <li>희망직무: {detail.unscored.desired_job || "—"}</li>
-                  <li>
-                    자격증:{" "}
-                    {detail.certs
-                      .map((c) => `${c.cert_name}${(c as { category?: string }).category ? ` [${certCategoryLabel((c as { category?: string }).category)}]` : ""}`)
-                      .join(", ") || "—"}
-                  </li>
-                </ul>
-                <h4>추천활동 ({detail.recs.length})</h4>
-                <ul className="reason-list">
-                  {detail.recs.map((a) => (
-                    <li key={a.recommendation_code}>
-                      {a.name} <span className="muted">({a.owner === "CAREER" ? "진로" : "취업"}컨설턴트)</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </div>
-          </div>
-        </div>
-      )}
+      {pwModal && <PasswordModal userId={session.id} onClose={() => setPwModal(false)} />}
     </div>
   );
 }

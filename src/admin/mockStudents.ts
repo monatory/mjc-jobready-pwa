@@ -19,6 +19,7 @@ export interface StudentRecord {
   name: string;
   dept: string;
   grade: string;
+  phone: string; // 상담사 아웃리치 채널 (2026-08-30)
   semester: string;
   survey: Record<string, string>;
   unscored: Record<string, string>;
@@ -76,6 +77,8 @@ const CERT_POOL: Array<{ name: string; category: string }> = [
   { name: "전기기능사", category: "MAJOR" },
   { name: "TOEIC 700+", category: "LANG" },
   { name: "JLPT N2", category: "LANG" },
+  { name: "자동차운전면허 1종 보통", category: "DRIVER" },
+  { name: "자동차운전면허 2종 보통", category: "DRIVER" },
   { name: "지게차운전기능사", category: "ETC" },
   { name: "SMAT 2급", category: "ETC" },
 ];
@@ -159,6 +162,7 @@ function makeStudent(i: number): StudentRecord {
     name: NAMES[i % NAMES.length],
     dept: DEPTS[i % DEPTS.length],
     grade: pick(["1", "2", "3"]),
+    phone: `010-${String(1000 + Math.floor(rng() * 9000))}-${String(1000 + Math.floor(rng() * 9000))}`,
     semester: "2026-2",
     survey,
     unscored,

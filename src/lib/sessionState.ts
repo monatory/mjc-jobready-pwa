@@ -1,16 +1,18 @@
 // 세션 상태 영속화 — 키 컨벤션 mjc_ready_* (CLAUDE.md §9)
 // 시범 프로토타입: 모든 데이터는 sessionStorage에만 저장 (서버 전송 없음)
+import { diagItems } from "./dataLoader";
 
 export interface StudentProfile {
   student_id: string;
   name: string;
   dept: string;
   grade: string;
+  phone: string; // 휴대전화 — 상담사 아웃리치(먼저 연락)의 핵심 채널 (2026-08-30 추가)
 }
 
 export interface CertEntry {
   cert_name: string;
-  category?: string; // OA | MAJOR | LANG | ETC — 상담사 활용 분류 (survey_items.certification_entry.category_values)
+  category?: string; // OA | MAJOR | LANG | DRIVER | ETC — 상담사 활용 분류 (survey_items.certification_entry.category_values)
   status: "OWNED" | "PREPARING" | "TARGET";
 }
 
@@ -66,7 +68,8 @@ export function clearAll(): void {
 export function getResumeState(): "NONE" | "SURVEY" | "DIAG" | "RESULT" {
   const diag = getDiag();
   const survey = getSurvey();
-  if (Object.keys(diag).length > 0) return Object.keys(diag).length >= 27 ? "RESULT" : "DIAG";
+  // 문항 수는 데이터(diagnostic_bank)에서 — 27 하드코딩 금지 (§4)
+  if (Object.keys(diag).length > 0) return Object.keys(diag).length >= diagItems.length ? "RESULT" : "DIAG";
   if (Object.keys(survey).length > 0) return "SURVEY";
   return "NONE";
 }

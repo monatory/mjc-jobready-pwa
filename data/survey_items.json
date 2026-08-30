@@ -208,12 +208,13 @@
     }
   },
   "certification_entry": {
-    "note": "자격증은 점수 환산 없이 원자료 보존 (1건 = 1레코드, Long Format). 분류(category)는 상담사 활용 핵심 — OA/전공/어학/기타 (2026-08-28 취·창업팀 요구)",
+    "note": "자격증은 점수 환산 없이 원자료 보존 (1건 = 1레코드, Long Format). 분류(category)는 상담사 활용 핵심 — OA/전공/어학/운전면허/기타 (2026-08-28 취·창업팀 요구, 운전면허 분류는 2026-08-30 추가 — 현장 채용조건에서 중요)",
     "fields": ["cert_name", "category", "status", "target_or_acquired_date", "memo"],
     "category_values": [
       { "value": "OA", "label": "OA·사무 (컴활·ITQ 등)" },
       { "value": "MAJOR", "label": "전공 관련" },
       { "value": "LANG", "label": "어학 (TOEIC·JLPT 등)" },
+      { "value": "DRIVER", "label": "운전면허 (1종·2종 등)" },
       { "value": "ETC", "label": "기타" }
     ],
     "status_values": [

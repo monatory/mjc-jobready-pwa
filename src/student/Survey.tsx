@@ -29,7 +29,8 @@ export default function Survey() {
   }, [consented, navigate]);
 
   const [profile, setProfileState] = useState(
-    getProfile() ?? { student_id: "", name: "", dept: "", grade: "" }
+    // 기존 저장 프로필에 phone이 없을 수 있으므로(항목 추가 이전 응답) 기본값과 병합
+    { student_id: "", name: "", dept: "", grade: "", phone: "", ...(getProfile() ?? {}) }
   );
   const [answers, setAnswers] = useState<Record<string, string>>(getSurvey());
   const [unscored, setUnscoredState] = useState<Record<string, string>>(getUnscored());
@@ -37,7 +38,10 @@ export default function Survey() {
   const [showErrors, setShowErrors] = useState(false);
 
   const requiredDone = useMemo(() => {
-    const profileOk = profile.student_id.trim() && profile.name.trim() && profile.dept.trim() && profile.grade;
+    // 휴대전화는 상담사가 먼저 연락하는 시스템의 핵심 채널 — 필수 (숫자 10~11자리)
+    const phoneOk = /^01[0-9]-?\d{3,4}-?\d{4}$/.test(profile.phone.trim());
+    const profileOk =
+      profile.student_id.trim() && profile.name.trim() && profile.dept.trim() && profile.grade && phoneOk;
     const surveyOk = scoredItemEntries.every(([key]) => answers[key]);
     return Boolean(profileOk && surveyOk);
   }, [profile, answers]);
@@ -61,7 +65,16 @@ export default function Survey() {
     }
     setProfile(profile);
     setSurvey(answers);
-    setUnscored(unscored);
+    // 조건부 문항(visible_if)은 상위 응답 변경으로 노출 조건이 깨지면 저장에서 제외 — 원자료 오염 방지
+    const cleanedUnscored = Object.fromEntries(
+      Object.entries(unscored).filter(([key]) => {
+        const item = (surveyItems.unscored_items as Record<string, { visible_if?: { item: string; value: string } }>)[key];
+        if (!item?.visible_if) return true;
+        const v = answers[item.visible_if.item] ?? unscored[item.visible_if.item];
+        return v === item.visible_if.value;
+      })
+    );
+    setUnscored(cleanedUnscored);
     setCerts(certs.filter((c) => c.cert_name.trim()));
     navigate("/diagnostic");
   };
@@ -118,15 +131,16 @@ export default function Survey() {
       <AppHeader step={2} />
       <main className="container">
         {showErrors && !requiredDone && (
-          <div className="alert">필수 항목(기본 정보 4개, 설문 {scoredItemEntries.length}개)을 모두 입력해 주세요.</div>
+          <div className="alert">필수 항목(기본 정보 5개, 설문 {scoredItemEntries.length}개)을 모두 입력해 주세요. 휴대전화는 010-0000-0000 형식으로 입력해 주세요.</div>
         )}
 
         <section className="card">
           <h2 className="card__title">A. 기본 정보 <span className="required-mark">필수</span></h2>
           <div className="grid-2">
             <div className="field">
-              <label className="field__label">학번</label>
+              <label className="field__label" htmlFor="profile-student-id">학번</label>
               <input
+                id="profile-student-id"
                 className="input"
                 value={profile.student_id}
                 inputMode="numeric"
@@ -135,8 +149,9 @@ export default function Survey() {
               />
             </div>
             <div className="field">
-              <label className="field__label">성명</label>
+              <label className="field__label" htmlFor="profile-name">성명</label>
               <input
+                id="profile-name"
                 className="input"
                 value={profile.name}
                 placeholder="이름"
@@ -144,8 +159,9 @@ export default function Survey() {
               />
             </div>
             <div className="field">
-              <label className="field__label">학과</label>
+              <label className="field__label" htmlFor="profile-dept">학과</label>
               <input
+                id="profile-dept"
                 className="input"
                 value={profile.dept}
                 placeholder="예: 컴퓨터공학과"
@@ -166,6 +182,19 @@ export default function Survey() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="field">
+              <label className="field__label" htmlFor="profile-phone">휴대전화</label>
+              <input
+                id="profile-phone"
+                className="input"
+                type="tel"
+                value={profile.phone}
+                inputMode="numeric"
+                placeholder="예: 010-1234-5678"
+                onChange={(e) => setProfileState({ ...profile, phone: e.target.value })}
+              />
+              <p className="field__hint">상담·프로그램 연계 시 잡카페 컨설턴트가 연락드리는 번호예요.</p>
             </div>
           </div>
         </section>

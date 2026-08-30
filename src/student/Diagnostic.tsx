@@ -28,7 +28,7 @@ export default function Diagnostic() {
     const next = { ...answers, [q.id]: value };
     setAnswers(next);
     setDiag(next);
-    // 500ms 후 다음 미응답 문항으로 자동 진행 (MJC-CAT 패턴)
+    // 350ms 후 다음 미응답 문항으로 자동 진행 (MJC-CAT 패턴)
     window.setTimeout(() => {
       const nextIdx = diagItems.findIndex((it, i) => i > cursor && !next[it.id]);
       const fallback = diagItems.findIndex((it) => !next[it.id]);
