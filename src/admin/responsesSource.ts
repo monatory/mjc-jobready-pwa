@@ -2,7 +2,7 @@
 // 실측 문서의 "원응답"을 저장된 스냅샷이 아니라 판정 엔진으로 다시 계산해 표시한다(결정론 §3.1-②).
 import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
-import { CLOUD_ENABLED, COL, getDb } from "../lib/firebase";
+import { CLOUD_ENABLED, COL, getDb, authReady } from "../lib/firebase";
 import { evaluate, type EvaluationResult } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
 import { resolveRecommendations } from "../../lib/recommendation_resolver.js";
@@ -51,6 +51,7 @@ let cache: Promise<StudentsData> | null = null;
 async function fetchStudents(): Promise<StudentsData> {
   if (!CLOUD_ENABLED) return MOCK;
   try {
+    await authReady(); // 새로고침 시 로그인 복원 대기 — 복원 전 조회는 권한 거부됨
     const snap = await getDocs(collection(getDb(), COL.responses));
     if (snap.empty) return MOCK;
     const students: StudentRecord[] = [];
@@ -67,24 +68,28 @@ async function fetchStudents(): Promise<StudentsData> {
   }
 }
 
-/** 세션당 1회 조회 캐시 — 로그인 직후·새로고침 시 갱신 */
+/** 세션당 1회 조회 캐시 — 로그인·로그아웃 시 무효화(권한이 바뀌므로 재조회 필요) */
 export function fetchStudentsCached(): Promise<StudentsData> {
   return (cache ??= fetchStudents());
 }
+
+const listeners = new Set<() => void>();
 export function invalidateStudentsCache(): void {
   cache = null;
+  listeners.forEach((l) => l());
 }
 
-/** 화면용 훅 — mock으로 즉시 그리고, 실측이 오면 교체 */
+/** 화면용 훅 — mock으로 즉시 그리고, 실측이 오면 교체. 캐시 무효화 시 자동 재조회 */
 export function useStudents(): StudentsData {
   const [data, setData] = useState<StudentsData>(MOCK);
   useEffect(() => {
     let alive = true;
-    void fetchStudentsCached().then((d) => {
-      if (alive) setData(d);
-    });
+    const load = () => void fetchStudentsCached().then((d) => alive && setData(d));
+    load();
+    listeners.add(load);
     return () => {
       alive = false;
+      listeners.delete(load);
     };
   }, []);
   return data;

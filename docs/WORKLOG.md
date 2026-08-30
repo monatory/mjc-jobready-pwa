@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-08-30 (마감 4) — 🎉 Firebase 클라우드 모드 가동 (전 구간 실측 검증 통과)
+
+사용자가 콘솔 설정 완료(프로젝트 mjc-ready-pwa 생성 → config 제공 → Auth 이메일/익명 +
+마스터 계정 → Firestore(서울, Standard) → Rules 게시 → 승인 도메인). config 코드 반영 후
+**엔드투엔드 실측 검증 전부 통과**:
+
+1. 학생 흐름 완주 → 익명 인증으로 `ready_responses/2026-2_20260001` 제출 성공
+   ("응답이 안전하게 제출되었습니다" 표시)
+2. 마스터 Firebase Auth 실로그인 (IndexedDB에 이메일 세션 확인 — 로컬 폴백 아님)
+3. 관리자 화면 "실측 데이터 — 응답 1건" 전환, 명단에 실측 학생(엔진 재판정 L4·JAS 100)
+4. 워크스페이스 "☁ 공유 저장소 연결됨" + 연락 기록 저장 → **로컬 캐시 삭제 후 리로드 시
+   클라우드에서 기록 복원** (상담사 간 공유 실증)
+5. 비인증 REST 읽기 403 PERMISSION_DENIED — 실명 데이터 보호 규칙 실동 확인
+
+버그 3건 즉석 수정: ① 로그인 후 학생 데이터 캐시 미갱신 → storeSession에서 무효화+리스너
+재조회 ② 새로고침 시 Auth 복원 전에 조회돼 권한 거부 → `authReady()` 대기 후 조회
+(fetch/pullShared/loadStaffCloud 공통) ③ 공유 동기화 완료 후 명단 배지 미반영 →
+StudentsPanel key=cloudState 리마운트
+
+---
+
 ## 2026-08-30 (마감 3) — Firebase 연동 구현 (별도 프로젝트, 설정 즉시 활성화)
 
 결정: 기존 Firebase **계정**을 쓰되 **프로젝트는 분리**(`mjc-ready-pwa` 신규) — MJC-CAT Rules(익명

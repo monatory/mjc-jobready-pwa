@@ -11,7 +11,7 @@ import {
   signOut as fbSignOut,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
-import { CLOUD_ENABLED, COL, getAuthInst, getDb } from "../lib/firebase";
+import { CLOUD_ENABLED, COL, getAuthInst, getDb, authReady } from "../lib/firebase";
 
 // 역할 체계 (2026-08-30 사용자 확정 — "담당자는 상담사 페이지를 볼 수 없어야 한다"):
 //  MASTER          마스터(개발자=사용자) — 양쪽 전부
@@ -183,6 +183,8 @@ type LoginResult = { ok: boolean; message: string; session?: AdminSession };
 function storeSession(id: string, name: string, role: AdminRole): AdminSession {
   const session: AdminSession = { id, name, role, login_at: new Date().toISOString() };
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  // 로그인으로 읽기 권한이 생겼으므로 학생 데이터 캐시 재조회 (동적 import — 순환 방지)
+  void import("./responsesSource").then((m) => m.invalidateStudentsCache());
   return session;
 }
 
@@ -308,6 +310,7 @@ interface StaffDoc {
 export async function loadStaffCloud(): Promise<AdminAccount[] | null> {
   if (!CLOUD_ENABLED) return null;
   try {
+    await authReady(); // 로그인 복원 대기
     const snap = await getDocs(collection(getDb(), COL.staff));
     const list: AdminAccount[] = [];
     snap.forEach((d) => {

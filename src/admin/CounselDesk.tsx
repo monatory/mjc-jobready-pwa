@@ -130,7 +130,8 @@ export default function CounselDesk() {
               연락·상담 관리{" "}
               <span className="muted small">연락 대기 {waitCount}명 · 연계 사후관리 {followupCount}명</span>
             </h1>
-            <StudentsPanel session={session} showOutreach={true} />
+            {/* key=cloudState — 공유 저장소 동기화 완료 시 리마운트해 최신 기록 반영 */}
+            <StudentsPanel key={cloudState} session={session} showOutreach={true} />
           </>
         )}
 

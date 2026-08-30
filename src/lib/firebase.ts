@@ -14,7 +14,7 @@
  */
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, onAuthStateChanged, type Auth } from "firebase/auth";
 
 // ▼▼▼ mjc-ready-pwa 프로젝트 설정 (2026-08-30 사용자 제공) ▼▼▼
 const firebaseConfig = {
@@ -54,4 +54,18 @@ export function getDb(): Firestore {
 
 export function getAuthInst(): Auth {
   return getAuth(getApp());
+}
+
+/**
+ * 새로고침 직후 Firebase가 로그인 상태를 복원할 때까지 대기.
+ * 인증이 필요한 첫 조회(fetch) 전에 반드시 호출 — 복원 전에 조회하면 권한 거부로 폴백돼 버림.
+ */
+export function authReady(): Promise<void> {
+  if (!CLOUD_ENABLED) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsub = onAuthStateChanged(getAuthInst(), () => {
+      unsub();
+      resolve();
+    });
+  });
 }

@@ -5,7 +5,7 @@
 //  - 저장 시 outreach.ts/agencies.ts가 push*()를 fire-and-forget 호출
 // 읽기 화면들은 지금처럼 동기 API(loadOutreach 등)만 쓰면 된다.
 import { doc, setDoc, getDocs, collection, deleteDoc } from "firebase/firestore";
-import { CLOUD_ENABLED, COL, getDb } from "../lib/firebase";
+import { CLOUD_ENABLED, COL, getDb, authReady } from "../lib/firebase";
 import type { OutreachEntry } from "./outreach";
 import type { Agency } from "./agencies";
 
@@ -18,6 +18,7 @@ const AGENCY_KEY = "mjc_ready_agencies";
 export async function pullShared(): Promise<CloudState> {
   if (!CLOUD_ENABLED) return "LOCAL";
   try {
+    await authReady(); // 로그인 복원 대기
     const db = getDb();
     // 상담 기록 — 학생별 updated_at 최신 우선 병합
     const localOutreach = JSON.parse(localStorage.getItem(OUTREACH_KEY) ?? "{}") as Record<string, OutreachEntry>;
