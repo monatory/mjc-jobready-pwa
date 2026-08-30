@@ -16,14 +16,14 @@ import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
 
-// ▼▼▼ 새 프로젝트 생성 후 콘솔의 firebaseConfig를 여기에 붙여넣기 ▼▼▼
+// ▼▼▼ mjc-ready-pwa 프로젝트 설정 (2026-08-30 사용자 제공) ▼▼▼
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyC2hu-6elRqISSZB9bwgwksBma0Dt1ZFTo",
+  authDomain: "mjc-ready-pwa.firebaseapp.com",
+  projectId: "mjc-ready-pwa",
+  storageBucket: "mjc-ready-pwa.firebasestorage.app",
+  messagingSenderId: "65253686172",
+  appId: "1:65253686172:web:fac7d75510f94f3f006659",
 };
 // ▲▲▲──────────────────────────────────────────────────────▲▲▲
 
