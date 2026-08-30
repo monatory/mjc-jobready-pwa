@@ -23,6 +23,7 @@ const KEYS = {
   unscored: "mjc_ready_unscored",
   certs: "mjc_ready_certs",
   diag: "mjc_ready_diag",
+  uploaded: "mjc_ready_uploaded", // 클라우드 제출 완료 표시 — 다시 진단 시 함께 초기화
 } as const;
 
 function read<T>(key: string): T | null {

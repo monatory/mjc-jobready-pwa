@@ -94,6 +94,8 @@ export function saveOutreachEntry(
   } catch {
     /* 프로토타입: 저장 실패는 치명적이지 않음 */
   }
+  // 클라우드 공유 저장소에도 반영 (설정 전에는 no-op) — 순환 import 방지 위해 동적 import
+  void import("./cloudStore").then((m) => m.pushOutreach(studentId, all[studentId]));
   return all;
 }
 

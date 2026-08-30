@@ -2,7 +2,8 @@
 // showOutreach=true(상담사 전용)일 때만 연락 우선 큐·연락상태·상담 메모가 나타난다.
 // 담당자(행정)에게는 연락 기록이 화면·CSV 어디에도 노출되지 않는다 (2026-08-30 사용자 확정).
 import { useMemo, useState } from "react";
-import { mockStudents, surveyAnswerLabel, type StudentRecord } from "./mockStudents";
+import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
+import { useStudents } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
 import { domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
 import type { AdminSession } from "./auth";
@@ -117,7 +118,7 @@ export default function StudentsPanel({
   session: AdminSession;
   showOutreach: boolean;
 }) {
-  const students = mockStudents;
+  const { students } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
   const [presets, setPresets] = useState<Set<string>>(new Set());
   const [queueOnly, setQueueOnly] = useState(false);
   const [followupOnly, setFollowupOnly] = useState(false); // 🔗 외부연계 사후관리 큐

@@ -39,21 +39,30 @@ function save(list: Agency[]): Agency[] {
   return list;
 }
 
+// 클라우드 반영 헬퍼 (설정 전에는 no-op)
+const pushCloud = (a: Agency) => void import("./cloudStore").then((m) => m.pushAgency(a));
+
 export function addAgency(input: Omit<Agency, "id" | "created_at">): Agency[] {
   const list = loadAgencies();
-  list.push({
+  const agency: Agency = {
     ...input,
     id: `ag_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`,
     created_at: new Date().toISOString(),
-  });
+  };
+  list.push(agency);
+  pushCloud(agency);
   return save(list);
 }
 
 export function updateAgency(id: string, patch: Partial<Omit<Agency, "id" | "created_at">>): Agency[] {
-  return save(loadAgencies().map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  const next = loadAgencies().map((a) => (a.id === id ? { ...a, ...patch } : a));
+  const updated = next.find((a) => a.id === id);
+  if (updated) pushCloud(updated);
+  return save(next);
 }
 
 export function removeAgency(id: string): Agency[] {
+  void import("./cloudStore").then((m) => m.deleteAgencyCloud(id));
   return save(loadAgencies().filter((a) => a.id !== id));
 }
 

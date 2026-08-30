@@ -1,7 +1,9 @@
 // 결과지 — Level·JAS 게이지·영역점수·보완영역·추천활동·상담 연결 (계획서 §5-2)
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
+import { saveResponseToCloud } from "../lib/saveResponse";
+import { getUnscored, getCerts } from "../lib/sessionState";
 import { evaluate } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
 import { resolveRecommendations } from "../../lib/recommendation_resolver.js";
@@ -67,6 +69,32 @@ export default function Result() {
     if (!hasData) return null;
     return evaluate(survey, diag, { surveyItems, diagnosticBank, levelRules });
   }, [hasData, survey, diag]);
+
+  // 응답 클라우드 제출 (설정 전에는 no-op) — 같은 세션에서 1회만
+  const [uploaded, setUploaded] = useState(sessionStorage.getItem("mjc_ready_uploaded") === "Y");
+  useEffect(() => {
+    if (!hasData || !evalResult || !profile || uploaded) return;
+    void saveResponseToCloud({
+      profile,
+      survey,
+      unscored: getUnscored(),
+      certs: getCerts(),
+      diag,
+      result: {
+        jas: evalResult.jas,
+        jrs: evalResult.jrs ?? null,
+        cds: evalResult.cds ?? null,
+        level: evalResult.level,
+        route_tag: evalResult.routeTag,
+      },
+    }).then((ok) => {
+      if (ok) {
+        sessionStorage.setItem("mjc_ready_uploaded", "Y");
+        setUploaded(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasData, evalResult]);
 
   if (!hasData || !evalResult) {
     return (
@@ -216,7 +244,10 @@ export default function Result() {
           </button>
         </div>
 
-        <footer className="legal">{templates.legal_footer}</footer>
+        <footer className="legal">
+          {uploaded && <>응답이 안전하게 제출되었습니다. </>}
+          {templates.legal_footer}
+        </footer>
       </main>
     </div>
   );

@@ -4,7 +4,8 @@
 //  · 어떤 화면 링크에도 노출하지 않는다 — 상담사 계열 로그인 시에만 자동 진입.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { mockStudents } from "./mockStudents";
+import { useStudents } from "./responsesSource";
+import { pullShared, type CloudState } from "./cloudStore";
 import { getSession, logout, canAccess, isCounselSide, homeRoute, ROLE_LABELS, type AdminSession } from "./auth";
 import AdminLogin from "./Login";
 import Accounts from "./Accounts";
@@ -22,26 +23,33 @@ const SECTION_PERMS: Record<Section, string> = {
 
 export default function CounselDesk() {
   const navigate = useNavigate();
+  const { students, source } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
   const [session, setSession] = useState<AdminSession | null>(getSession);
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("students");
+  const [cloudState, setCloudState] = useState<CloudState>("LOCAL");
 
   // 담당자(행정)는 이 페이지를 볼 수 없다 — 관리자 화면으로 돌려보냄 (핵심 요구)
   useEffect(() => {
     if (session && !isCounselSide(session.role)) navigate("/admin", { replace: true });
   }, [session, navigate]);
 
+  // 공유 저장소에서 연락 기록·등록부 당겨오기 (설정 전에는 로컬 모드 유지)
+  useEffect(() => {
+    if (session && isCounselSide(session.role)) void pullShared().then(setCloudState);
+  }, [session]);
+
   // 헤더에 보여줄 오늘의 업무량 (연락 대기 · 연계 사후관리)
   const { waitCount, followupCount } = useMemo(() => {
     const outreach = loadOutreach();
     return {
-      waitCount: mockStudents.filter(needsOutreachWith(outreach)).length,
-      followupCount: mockStudents.filter((s) =>
+      waitCount: students.filter(needsOutreachWith(outreach)).length,
+      followupCount: students.filter((s) =>
         ["REFERRED", "FOLLOWUP"].includes(referralStageOf(outreach, s.student_id))
       ).length,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section]);
+  }, [section, students, cloudState]);
 
   if (!session)
     return (
@@ -110,8 +118,10 @@ export default function CounselDesk() {
 
       <main className="admin__main">
         <div className="admin__banner admin__banner--counsel">
-          상담사 전용 공간 — 연락 기록·상담 메모는 이곳에서만 보이며, 담당자(행정) 화면과 일반 다운로드에는 포함되지 않습니다.
-          시범: 이 브라우저에만 저장 — 상담사 간 실시간 공유는 Firestore 연동 시 활성화됩니다.
+          상담사 전용 공간 — 연락 기록·상담 메모는 이곳에서만 보이며, 담당자(행정) 화면과 일반 다운로드에는 포함되지 않습니다.{" "}
+          {cloudState === "CLOUD"
+            ? `☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다.${source === "CLOUD" ? ` (실측 응답 ${students.length}건)` : ""}`
+            : "시범: 이 브라우저에만 저장 — Firebase 설정(docs/FIREBASE_SETUP.md) 후 상담사 간 공유로 전환됩니다."}
         </div>
 
         {section === "students" && (

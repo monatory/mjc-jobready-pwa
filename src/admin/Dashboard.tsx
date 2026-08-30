@@ -4,7 +4,7 @@
 // 시범: mock 40명(실제 엔진 판정)을 미리보기 모드로 표시. Firestore 연동 시 데이터 소스만 교체.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { mockStudents } from "./mockStudents";
+import { useStudents } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, sheetKeys } from "./csvExport";
 import { recommendationMaster, domainLabels, levelRules } from "../lib/dataLoader";
 
@@ -19,7 +19,7 @@ type Section = "overview" | "students" | "recommend" | "download" | "accounts";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const students = mockStudents;
+  const { students, source } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
   const [session, setSession] = useState<AdminSession | null>(getSession);
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
@@ -135,7 +135,9 @@ export default function Dashboard() {
 
       <main className="admin__main">
         <div className="admin__banner">
-          미리보기 모드 — 가상 학생 {students.length}명(실제 판정엔진 통과)으로 표시 중. Firestore 연동 시 실측 데이터로 자동 전환됩니다.
+          {source === "CLOUD"
+            ? `실측 데이터 — Firebase에 저장된 학생 응답 ${students.length}건을 표시 중입니다.`
+            : `미리보기 모드 — 가상 학생 ${students.length}명(실제 판정엔진 통과)으로 표시 중. Firebase 설정 후 실측 데이터로 자동 전환됩니다.`}
         </div>
 
         {section === "overview" && (

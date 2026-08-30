@@ -1,0 +1,94 @@
+rules_version = '2';
+
+// MJC-READY Firestore Security Rules — 별도 신규 프로젝트 전용 (2026-08-30)
+// ─────────────────────────────────────────────────────────────────
+// 실명(학번·성명·전화) 시스템이므로 읽기는 전부 "승인된 교직원"으로 잠근다.
+//  · 학생: 익명 인증으로 본인 응답 create/update만 (auth_uid 일치 강제)
+//  · 담당자(행정)·상담사: ready_staff 문서 status=ACTIVE 일 때만 응답 조회
+//  · 상담 기록·등록부: 상담사 계열(MASTER/COUNSELOR_LEAD/COUNSELOR)만 — 담당자 차단
+//  · 마스터: 이메일 일치로 판정 (문서 위조로 마스터가 될 수 없음)
+// ⚠ 이 파일은 mjc-ready 전용 프로젝트에 게시 — MJC-CAT(mjc-career-pwa)에는 절대 게시 금지
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── 역할 판정 ─────────────────────────────────────────
+    function isMaster() {
+      return request.auth != null
+        && request.auth.token.email == 'monatory82@gmail.com';
+    }
+    function staff() {
+      return get(/databases/$(database)/documents/ready_staff/$(request.auth.uid)).data;
+    }
+    function isActiveStaff() {
+      return isMaster()
+        || (request.auth != null && staff().status == 'ACTIVE');
+    }
+    function isCounselSide() {
+      return isMaster()
+        || (isActiveStaff() && staff().role in ['COUNSELOR', 'COUNSELOR_LEAD']);
+    }
+    function isLeadOrMaster() {
+      return isMaster()
+        || (isActiveStaff() && staff().role == 'COUNSELOR_LEAD');
+    }
+
+    // ── 학생 응답 (실명 원자료) ───────────────────────────
+    match /ready_responses/{docId} {
+      // 학생(익명 인증) — 본인 응답 생성, 같은 학기 재응시는 본인 문서만 갱신
+      allow create: if request.auth != null && validResponse();
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.auth_uid
+        && validResponse();
+      // 조회는 승인된 교직원만 (행정·상담사 공통 — 실명이므로 공개 금지)
+      allow read: if isActiveStaff();
+      allow delete: if isMaster();
+
+      function validResponse() {
+        return request.resource.data.keys().hasAll(
+                ['profile', 'survey', 'diag', 'semester', 'auth_uid', 'saved_at'])
+          && request.resource.data.auth_uid == request.auth.uid
+          && request.resource.data.profile.student_id is string
+          && request.resource.data.profile.student_id.size() >= 4
+          && request.resource.data.profile.student_id.size() <= 20
+          && request.resource.data.profile.name is string
+          && request.resource.data.profile.name.size() <= 30
+          && request.resource.data.size() <= 30;
+      }
+    }
+
+    // ── 상담사 전용 데이터 — 담당자(행정) 접근 불가 ────────
+    match /ready_outreach/{studentDoc} {
+      allow read, write: if isCounselSide();
+    }
+    match /ready_agencies/{agencyId} {
+      allow read, write: if isCounselSide();
+    }
+
+    // ── 교직원 계정 메타 ─────────────────────────────────
+    match /ready_staff/{uid} {
+      // 가입 신청 — 본인 uid + PENDING + 담당자/상담사만 (관리자 역할 자가 부여 금지)
+      allow create: if isMaster()
+        || (request.auth != null
+            && request.auth.uid == uid
+            && request.resource.data.status == 'PENDING'
+            && request.resource.data.role in ['ADMIN', 'COUNSELOR']
+            && request.resource.data.email == request.auth.token.email);
+      // 본인 문서 + 승인된 교직원은 목록 조회 가능
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || isActiveStaff());
+      // 승인·상태 변경: 마스터 전체 / 상담사 관리자는 상담사 계정만 (역할 승격은 마스터 전용)
+      allow update: if isMaster()
+        || (isLeadOrMaster()
+            && resource.data.role in ['COUNSELOR', 'COUNSELOR_LEAD']
+            && request.resource.data.role == resource.data.role);
+      allow delete: if isMaster()
+        || (isLeadOrMaster() && resource.data.role in ['COUNSELOR', 'COUNSELOR_LEAD']);
+    }
+
+    // 그 외 경로 전부 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
