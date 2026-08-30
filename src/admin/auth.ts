@@ -61,6 +61,7 @@ export const SECTION_ROLES: Record<string, AdminRole[]> = {
   accounts: ["MASTER"],
   // 상담사 워크스페이스(#/counsel) 섹션
   counselStudents: ["MASTER", "COUNSELOR_LEAD", "COUNSELOR"],
+  counselAgencies: ["MASTER", "COUNSELOR_LEAD", "COUNSELOR"], // 연계기관·취업처 등록부 (공유 자원)
   counselAccounts: ["MASTER", "COUNSELOR_LEAD"],
 };
 export const canAccess = (role: AdminRole, section: string): boolean =>

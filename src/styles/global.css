@@ -1403,3 +1403,155 @@ body {
   opacity: 0.85;
   font-size: 0.82rem;
 }
+
+/* ── 통합 상담 카드 (상담사 워크스페이스) — 2026-08-30 ─────────── */
+.counsel-record {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.counsel-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  background: #f0f7f2;
+  border: 1px solid #cde7d6;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.counsel-summary__memo {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: #14532d;
+}
+.counsel-record__flash {
+  margin: 0;
+  font-size: 0.82rem;
+}
+.sum-badge {
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: #ececf0;
+  color: #555b66;
+  white-space: nowrap;
+}
+.sum-badge--hot {
+  background: #fff4e0;
+  color: #b06000;
+  font-weight: 700;
+}
+.sum-badge--plain {
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.ref-badge {
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.ref-badge--none { background: #ececf0; color: #7a7f8c; }
+.ref-badge--wanted { background: #fff4e0; color: #b06000; font-weight: 700; }
+.ref-badge--referred { background: #e8f0fe; color: #1a56b0; font-weight: 700; }
+.ref-badge--followup { background: #ede7fb; color: #5b3fa8; font-weight: 700; }
+.ref-badge--closed { background: #e7f6ec; color: #1c7a3d; }
+.emp-badge {
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.emp-badge--none { background: #ececf0; color: #7a7f8c; }
+.emp-badge--seeking { background: #fff4e0; color: #b06000; }
+.emp-badge--employed { background: #e7f6ec; color: #1c7a3d; font-weight: 700; }
+.emp-badge--further_study, .emp-badge--startup, .emp-badge--etc { background: #e8f0fe; color: #1a56b0; }
+.session-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+.session-list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.83rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.session-list__seq {
+  font-weight: 800;
+  color: var(--navy);
+  white-space: nowrap;
+}
+.session-list__date {
+  color: var(--muted);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+.session-list__content {
+  flex: 1;
+}
+.session-list__del {
+  border: none;
+  background: none;
+  color: #b6bcc8;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.session-list__del:hover {
+  color: var(--red);
+}
+.session-add {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.session-add__date {
+  flex: 0 0 140px;
+}
+.session-add__content {
+  flex: 1;
+  min-width: 180px;
+}
+.ref-grid {
+  display: grid;
+  grid-template-columns: 1fr 150px;
+  gap: 10px;
+}
+.ref-grid__note {
+  grid-column: 1 / -1;
+}
+.ref-agency-info {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+/* 연계기관 등록 폼 */
+.agency-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.agency-form__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 900px) {
+  .agency-form__grid {
+    grid-template-columns: 1fr;
+  }
+  .ref-grid {
+    grid-template-columns: 1fr;
+  }
+}

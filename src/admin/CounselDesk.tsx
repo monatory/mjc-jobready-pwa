@@ -10,9 +10,15 @@ import AdminLogin from "./Login";
 import Accounts from "./Accounts";
 import PasswordModal from "./PasswordModal";
 import StudentsPanel, { needsOutreachWith } from "./StudentsPanel";
-import { loadOutreach } from "./outreach";
+import AgencyManager from "./AgencyManager";
+import { loadOutreach, referralStageOf } from "./outreach";
 
-type Section = "students" | "counselors";
+type Section = "students" | "agencies" | "counselors";
+const SECTION_PERMS: Record<Section, string> = {
+  students: "counselStudents",
+  agencies: "counselAgencies",
+  counselors: "counselAccounts",
+};
 
 export default function CounselDesk() {
   const navigate = useNavigate();
@@ -25,12 +31,17 @@ export default function CounselDesk() {
     if (session && !isCounselSide(session.role)) navigate("/admin", { replace: true });
   }, [session, navigate]);
 
-  // 헤더에 보여줄 오늘의 업무량 (연락 대기)
-  const waitCount = useMemo(
-    () => mockStudents.filter(needsOutreachWith(loadOutreach())).length,
+  // 헤더에 보여줄 오늘의 업무량 (연락 대기 · 연계 사후관리)
+  const { waitCount, followupCount } = useMemo(() => {
+    const outreach = loadOutreach();
+    return {
+      waitCount: mockStudents.filter(needsOutreachWith(outreach)).length,
+      followupCount: mockStudents.filter((s) =>
+        ["REFERRED", "FOLLOWUP"].includes(referralStageOf(outreach, s.student_id))
+      ).length,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [section]
-  );
+  }, [section]);
 
   if (!session)
     return (
@@ -46,10 +57,11 @@ export default function CounselDesk() {
 
   const sections = (
     [
-      ["students", "연락 관리 (대상자 명단)"],
+      ["students", "연락·상담 관리 (명단)"],
+      ["agencies", "연계기관·취업처 관리"],
       ["counselors", "상담사 계정 관리"],
     ] as Array<[Section, string]>
-  ).filter(([key]) => canAccess(session.role, key === "students" ? "counselStudents" : "counselAccounts"));
+  ).filter(([key]) => canAccess(session.role, SECTION_PERMS[key]));
 
   return (
     <div className="admin admin--counsel">
@@ -104,10 +116,15 @@ export default function CounselDesk() {
 
         {section === "students" && (
           <>
-            <h1 className="admin__title">연락 관리 <span className="muted small">오늘 연락 대기 {waitCount}명</span></h1>
+            <h1 className="admin__title">
+              연락·상담 관리{" "}
+              <span className="muted small">연락 대기 {waitCount}명 · 연계 사후관리 {followupCount}명</span>
+            </h1>
             <StudentsPanel session={session} showOutreach={true} />
           </>
         )}
+
+        {section === "agencies" && canAccess(session.role, "counselAgencies") && <AgencyManager />}
 
         {section === "counselors" && canAccess(session.role, "counselAccounts") && (
           <Accounts

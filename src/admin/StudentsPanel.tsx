@@ -8,13 +8,19 @@ import { domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
 import type { AdminSession } from "./auth";
 import {
   loadOutreach,
-  saveOutreachEntry,
   statusOf,
+  referralStageOf,
+  employmentStatusOf,
   OUTREACH_LABELS,
   OUTREACH_ORDER,
+  REFERRAL_LABELS,
+  REFERRAL_ORDER,
+  EMPLOYMENT_LABELS,
+  EMPLOYMENT_ORDER,
   type OutreachEntry,
-  type OutreachStatus,
 } from "./outreach";
+import CounselRecord from "./CounselRecord";
+import { loadAgencies } from "./agencies";
 
 export const LEVEL_NAMES: Record<number, string> = { 1: "진로탐색", 2: "진로설정", 3: "취업준비", 4: "실전취업" };
 const rules = levelRules as unknown as { jas_cutoff_level3: number };
@@ -41,6 +47,8 @@ const labelOf = (key: string): string => {
 // ── 상세 필터 (2026-08-28 취·창업팀 요구 — 상담사가 대상자를 정밀 추출) ──
 interface AdvFilter {
   contact: string;     // 연락 상태 — 상담사 전용(showOutreach)
+  referral: string;    // 외부연계 단계 — 상담사 전용
+  employment: string;  // 취업상태 — 상담사 전용
   direction: string;   // 진로방향 (취업/진학·창업/미정)
   counsel: string;     // 상담 희망 (YES/NO)
   majorLink: string;   // 전공진출형/방향전환형
@@ -53,12 +61,14 @@ interface AdvFilter {
   gov: string;         // 정부지원 연계의향
 }
 const EMPTY_ADV: AdvFilter = {
-  contact: "", direction: "", counsel: "", majorLink: "", homeRegion: "", region: "", jobGroup: "",
-  cert: "", certCat: "", timing: "", gov: "",
+  contact: "", referral: "", employment: "", direction: "", counsel: "", majorLink: "",
+  homeRegion: "", region: "", jobGroup: "", cert: "", certCat: "", timing: "", gov: "",
 };
 
 const matchesAdv = (s: StudentRecord, f: AdvFilter, outreach: Record<string, OutreachEntry>): boolean => {
   if (f.contact && statusOf(outreach, s.student_id) !== f.contact) return false;
+  if (f.referral && referralStageOf(outreach, s.student_id) !== f.referral) return false;
+  if (f.employment && employmentStatusOf(outreach, s.student_id) !== f.employment) return false;
   if (f.direction && s.survey.career_direction !== f.direction) return false;
   if (f.counsel && s.survey.counsel_wish !== f.counsel) return false;
   if (f.majorLink && s.unscored.major_link !== f.majorLink) return false;
@@ -110,6 +120,7 @@ export default function StudentsPanel({
   const students = mockStudents;
   const [presets, setPresets] = useState<Set<string>>(new Set());
   const [queueOnly, setQueueOnly] = useState(false);
+  const [followupOnly, setFollowupOnly] = useState(false); // 🔗 외부연계 사후관리 큐
   const [outreach, setOutreach] = useState<Record<string, OutreachEntry>>(loadOutreach);
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const [deptFilter, setDeptFilter] = useState<string>("");
@@ -119,10 +130,14 @@ export default function StudentsPanel({
 
   const depts = useMemo(() => [...new Set(students.map((s) => s.dept))].sort(), [students]);
   const needsOutreach = needsOutreachWith(outreach);
+  // 외부연계 사후관리 대상: 연계 완료·사후관리 중 (종결 전까지 상담사가 챙겨야 하는 학생)
+  const inFollowup = (s: StudentRecord) =>
+    ["REFERRED", "FOLLOWUP"].includes(referralStageOf(outreach, s.student_id));
 
   const filtered = useMemo(() => {
     let list = students;
     if (showOutreach && queueOnly) list = list.filter(needsOutreach);
+    if (showOutreach && followupOnly) list = list.filter(inFollowup);
     for (const p of PRESETS) if (presets.has(p.key)) list = list.filter(p.fn);
     if (levelFilter) list = list.filter((s) => s.result.level === levelFilter);
     if (deptFilter) list = list.filter((s) => s.dept === deptFilter);
@@ -131,15 +146,17 @@ export default function StudentsPanel({
       list = list.filter((s) => s.name.includes(search.trim()) || s.student_id.includes(search.trim()));
     return [...list].sort((a, b) => b.result.jas - a.result.jas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [students, presets, queueOnly, levelFilter, deptFilter, adv, search, outreach, showOutreach]);
+  }, [students, presets, queueOnly, followupOnly, levelFilter, deptFilter, adv, search, outreach, showOutreach]);
 
   // 상담사 전용 요소를 제외한 상세 필터 구성
   const advFields = (
     [
       ...(showOutreach
-        ? ([["contact", "연락 상태", OUTREACH_ORDER.map((st) => ({ value: st, label: OUTREACH_LABELS[st] }))]] as Array<
-            [keyof AdvFilter, string, Opt[]]
-          >)
+        ? ([
+            ["contact", "연락 상태", OUTREACH_ORDER.map((st) => ({ value: st, label: OUTREACH_LABELS[st] }))],
+            ["referral", "외부연계 단계", REFERRAL_ORDER.map((st) => ({ value: st, label: REFERRAL_LABELS[st] }))],
+            ["employment", "취업상태", EMPLOYMENT_ORDER.map((st) => ({ value: st, label: EMPLOYMENT_LABELS[st] }))],
+          ] as Array<[keyof AdvFilter, string, Opt[]]>)
         : []),
       ["direction", "진로방향", optionsOf("career_direction")],
       ["counsel", "상담 희망", optionsOf("counsel_wish")],
@@ -172,6 +189,13 @@ export default function StudentsPanel({
             title="상담희망 또는 Level 3 이상 + 미연락·무응답 학생만"
           >
             📞 연락 우선 큐 ({students.filter(needsOutreach).length})
+          </button>
+          <button
+            className={`chip chip--queue ${followupOnly ? "chip--on" : ""}`}
+            onClick={() => setFollowupOnly((v) => !v)}
+            title="외부기관 연계 완료·사후관리 중인 학생만"
+          >
+            🔗 연계 사후관리 ({students.filter(inFollowup).length})
           </button>
         </div>
       )}
@@ -263,7 +287,7 @@ export default function StudentsPanel({
             <tr>
               <th>학번</th><th>성명</th><th>연락처</th><th>학과</th><th>학년</th><th>진로방향</th>
               <th>전공연계</th><th>JAS</th><th>Level</th><th>희망시기</th><th>상담</th>
-              {showOutreach && <th>연락상태</th>}
+              {showOutreach && <><th>연락상태</th><th>외부연계</th><th>취업</th></>}
             </tr>
           </thead>
           <tbody>
@@ -288,7 +312,29 @@ export default function StudentsPanel({
                   <td>{surveyAnswerLabel("employment_timing", s.survey.employment_timing)}</td>
                   <td>{s.survey.counsel_wish === "YES" ? "희망" : "—"}</td>
                   {showOutreach && (
-                    <td><span className={`outreach-badge outreach-badge--${st.toLowerCase()}`}>{OUTREACH_LABELS[st]}</span></td>
+                    <>
+                      <td><span className={`outreach-badge outreach-badge--${st.toLowerCase()}`}>{OUTREACH_LABELS[st]}</span></td>
+                      <td>
+                        {(() => {
+                          const rf = referralStageOf(outreach, s.student_id);
+                          return rf === "NONE" ? (
+                            <span className="muted small">—</span>
+                          ) : (
+                            <span className={`ref-badge ref-badge--${rf.toLowerCase()}`}>{REFERRAL_LABELS[rf]}</span>
+                          );
+                        })()}
+                      </td>
+                      <td>
+                        {(() => {
+                          const em = employmentStatusOf(outreach, s.student_id);
+                          return em === "NONE" ? (
+                            <span className="muted small">—</span>
+                          ) : (
+                            <span className={`emp-badge emp-badge--${em.toLowerCase()}`}>{EMPLOYMENT_LABELS[em]}</span>
+                          );
+                        })()}
+                      </td>
+                    </>
                   )}
                 </tr>
               );
@@ -314,13 +360,14 @@ export default function StudentsPanel({
               <button className="btn btn--ghost" onClick={() => setDetail(null)}>✕ 닫기</button>
             </div>
 
-            {/* 연락 기록 — 상담사 워크스페이스에서만 노출·수정 (담당자 화면에는 없음) */}
+            {/* 통합 상담 카드 — 상담사 워크스페이스에서만 노출·수정 (담당자 화면에는 없음) */}
             {showOutreach && (
-              <OutreachEditor
+              <CounselRecord
                 key={detail.student_id}
-                studentId={detail.student_id}
+                student={detail}
                 entry={outreach[detail.student_id]}
                 by={session.name}
+                agencies={loadAgencies()}
                 onSave={(next) => setOutreach(next)}
               />
             )}
@@ -390,68 +437,5 @@ export default function StudentsPanel({
         </div>
       )}
     </>
-  );
-}
-
-// 연락 기록 편집기 — 연락 상태 + 상담 메모 (상담사 워크스페이스 전용)
-function OutreachEditor({
-  studentId,
-  entry,
-  by,
-  onSave,
-}: {
-  studentId: string;
-  entry: OutreachEntry | undefined;
-  by: string;
-  onSave: (next: Record<string, OutreachEntry>) => void;
-}) {
-  const [status, setStatus] = useState<OutreachStatus>(entry?.status ?? "NONE");
-  const [memo, setMemo] = useState(entry?.memo ?? "");
-  const [saved, setSaved] = useState(false);
-  const dirty = status !== (entry?.status ?? "NONE") || memo !== (entry?.memo ?? "");
-
-  return (
-    <div className="outreach-editor">
-      <div className="outreach-editor__row">
-        <strong>연락 기록</strong>
-        <div className="outreach-editor__chips">
-          {OUTREACH_ORDER.map((st) => (
-            <button
-              key={st}
-              type="button"
-              className={`chip chip--sm ${status === st ? "chip--on" : ""}`}
-              onClick={() => { setStatus(st); setSaved(false); }}
-            >
-              {OUTREACH_LABELS[st]}
-            </button>
-          ))}
-        </div>
-      </div>
-      <textarea
-        className="input outreach-editor__memo"
-        rows={2}
-        placeholder="상담 메모 (예: 8/30 문자 발송, 9/2 상담 예약)"
-        value={memo}
-        onChange={(e) => { setMemo(e.target.value); setSaved(false); }}
-      />
-      <div className="outreach-editor__foot">
-        <span className="muted small">
-          {entry
-            ? `마지막 기록: ${entry.updated_at.slice(0, 16).replace("T", " ")} · ${entry.by}`
-            : "아직 연락 기록이 없습니다."}
-          {saved && <strong className="outreach-editor__saved"> 저장됨 ✓</strong>}
-        </span>
-        <button
-          className="btn btn--primary btn--sm"
-          disabled={!dirty}
-          onClick={() => {
-            onSave(saveOutreachEntry(studentId, { status, memo, by }));
-            setSaved(true);
-          }}
-        >
-          기록 저장
-        </button>
-      </div>
-    </div>
   );
 }

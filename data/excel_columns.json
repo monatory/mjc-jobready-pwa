@@ -25,6 +25,12 @@
       { "key": "counsel_wish", "label": "상담희망" },
       { "key": "outreach_status", "label": "연락상태" },
       { "key": "outreach_memo", "label": "상담메모" },
+      { "key": "session_count", "label": "상담회차" },
+      { "key": "counsel_summary", "label": "최종요약" },
+      { "key": "referral_stage", "label": "외부연계단계" },
+      { "key": "referral_agency", "label": "연계기관" },
+      { "key": "employment_status", "label": "취업상태" },
+      { "key": "employer", "label": "취업처" },
       { "key": "consent_view", "label": "정보열람동의" }
     ],
     "02_설문원자료": [

@@ -3,7 +3,16 @@
 import excelColumnsJson from "../../data/excel_columns.json";
 import { surveyItems } from "../lib/dataLoader";
 import { mockStudents, surveyAnswerLabel, type StudentRecord } from "./mockStudents";
-import { loadOutreach, statusOf, OUTREACH_LABELS } from "./outreach";
+import {
+  loadOutreach,
+  statusOf,
+  referralStageOf,
+  employmentStatusOf,
+  OUTREACH_LABELS,
+  REFERRAL_LABELS,
+  EMPLOYMENT_LABELS,
+} from "./outreach";
+import { loadAgencies, agencyName } from "./agencies";
 
 type ColumnDef = { key: string; label: string };
 const SHEETS = excelColumnsJson.sheets as Record<string, ColumnDef[]>;
@@ -36,7 +45,8 @@ function downloadCsv(filename: string, rows: string[][]): void {
 function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
   const cols = SHEETS[sheetKey];
   const header = cols.map((c) => c.label);
-  const outreach = loadOutreach(); // 상담사 연락 상태 — 내보내기 시점 스냅샷
+  const outreach = loadOutreach(); // 상담사 기록 — 내보내기 시점 스냅샷
+  const agencies = loadAgencies();
 
   const rowsOf = (s: StudentRecord): Array<Record<string, unknown>> => {
     switch (sheetKey) {
@@ -50,6 +60,12 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
             phone: s.phone,
             outreach_status: OUTREACH_LABELS[statusOf(outreach, s.student_id)],
             outreach_memo: outreach[s.student_id]?.memo ?? "",
+            session_count: outreach[s.student_id]?.sessions?.length ?? 0,
+            counsel_summary: outreach[s.student_id]?.final_summary ?? "",
+            referral_stage: REFERRAL_LABELS[referralStageOf(outreach, s.student_id)],
+            referral_agency: agencyName(agencies, outreach[s.student_id]?.referral?.agency_id),
+            employment_status: EMPLOYMENT_LABELS[employmentStatusOf(outreach, s.student_id)],
+            employer: outreach[s.student_id]?.employment?.employer ?? "",
             semester: s.semester,
             career_direction: surveyAnswerLabel("career_direction", s.survey.career_direction),
             major_link: surveyAnswerLabel("major_link", s.unscored.major_link),
@@ -129,8 +145,17 @@ function dropColumns(sheetKey: string, rows: string[][], keys: string[]): string
   return dropIdx.size === 0 ? rows : rows.map((r) => r.filter((_, i) => !dropIdx.has(i)));
 }
 
-// 연락 기록(연락상태·상담메모)은 상담사 전용 데이터 — 담당자(행정) 다운로드에는 포함 금지 (2026-08-30)
-const OUTREACH_KEYS = ["outreach_status", "outreach_memo"];
+// 상담사 전용 데이터(연락·회차·요약·연계·취업) — 담당자(행정) 다운로드에는 포함 금지 (2026-08-30)
+const OUTREACH_KEYS = [
+  "outreach_status",
+  "outreach_memo",
+  "session_count",
+  "counsel_summary",
+  "referral_stage",
+  "referral_agency",
+  "employment_status",
+  "employer",
+];
 
 export function exportSheet(
   sheetKey: string,
