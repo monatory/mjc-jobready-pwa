@@ -223,7 +223,7 @@ export default function Dashboard() {
                   {masterState.map((a, i) => (
                     <tr key={a.recommendation_code} className={a.active ? "" : "row-off"}>
                       <td className="code">{a.recommendation_code}</td>
-                      <td><strong>{a.name}</strong><br /><span className="muted small">{a.student_desc}</span></td>
+                      <td className="cell-wrap"><strong>{a.name}</strong><br /><span className="muted small">{a.student_desc}</span></td>
                       <td>{a.owner === "CAREER" ? "진로컨설턴트" : "취업컨설턴트"}</td>
                       <td>{a.levels.map((l) => `L${l}`).join(" ")}</td>
                       <td>{a.weak_domains.map((d) => (d === "ANY" ? "전체" : domainLabels[d])).join(" · ")}</td>

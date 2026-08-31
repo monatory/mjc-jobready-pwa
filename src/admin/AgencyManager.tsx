@@ -120,7 +120,7 @@ export default function AgencyManager() {
                 <td>{a.contact || "—"}</td>
                 <td>{a.manager || "—"}</td>
                 <td>{a.program || "—"}</td>
-                <td className="small">{a.note || "—"}</td>
+                <td className="small cell-wrap">{a.note || "—"}</td>
                 <td>
                   <div className="acct-actions">
                     <button className="btn btn--ghost btn--sm" onClick={() => startEdit(a)}>수정</button>

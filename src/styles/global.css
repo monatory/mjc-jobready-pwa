@@ -1033,6 +1033,14 @@ body {
   border-bottom: 1px solid var(--line);
   padding: 9px 10px;
   vertical-align: top;
+  /* 셀 내 어색한 줄바꿈 방지 — 표가 넓어지면 .table-wrap이 가로 스크롤 (2026-08-31) */
+  white-space: nowrap;
+}
+/* 긴 서술형 셀만 예외적으로 줄바꿈 허용 (추천활동 설명·기관 비고 등) */
+.admin-table .cell-wrap {
+  white-space: normal;
+  min-width: 220px;
+  max-width: 340px;
 }
 .admin-table--hover tbody tr {
   cursor: pointer;
