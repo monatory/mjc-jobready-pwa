@@ -11,7 +11,7 @@ import {
   signOut as fbSignOut,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
-import { CLOUD_ENABLED, COL, getAuthInst, getDb, authReady } from "../lib/firebase";
+import { CLOUD_ENABLED, COL, getAuthInst, getDb, getSignupAuth, getSignupDb, authReady } from "../lib/firebase";
 
 // 역할 체계 (2026-08-30 사용자 확정 — "담당자는 상담사 페이지를 볼 수 없어야 한다"):
 //  MASTER          마스터(개발자=사용자) — 양쪽 전부
@@ -136,11 +136,13 @@ export async function registerAccount(input: {
   if (id === MASTER_ID) return { ok: false, message: "사용할 수 없는 아이디입니다." };
 
   // ── 클라우드 경로: 이메일 아이디 + Firebase 설정 완료 ──
+  // 보조 "signup" 인스턴스 사용 (2026-08-31): createUserWithEmailAndPassword가 현재 브라우저의
+  // 로그인 세션(마스터·상담사·학생 익명)을 갈아타 파괴하던 문제 수정 — 신청은 격리된 세션에서 처리.
   if (CLOUD_ENABLED && id.includes("@")) {
-    const auth = getAuthInst();
+    const auth = getSignupAuth();
     try {
       const cred = await createUserWithEmailAndPassword(auth, id, input.password);
-      await setDoc(doc(getDb(), COL.staff, cred.user.uid), {
+      await setDoc(doc(getSignupDb(), COL.staff, cred.user.uid), {
         email: id,
         name: input.name.trim(),
         dept: input.dept.trim(),
@@ -151,8 +153,9 @@ export async function registerAccount(input: {
       await fbSignOut(auth).catch(() => {});
       return { ok: true, message: "신청이 접수되었습니다. 승인 후 로그인할 수 있습니다." };
     } catch (e) {
+      await fbSignOut(auth).catch(() => {});
       const code = (e as { code?: string })?.code ?? "";
-      if (code === "auth/email-already-in-use") return { ok: false, message: "이미 등록된 이메일입니다." };
+      if (code === "auth/email-already-in-use") return { ok: false, message: "이미 등록된 이메일입니다. 신청한 적이 있다면 로그인해 보세요 — 승인 대기 접수가 자동으로 복구됩니다." };
       if (code === "auth/invalid-email") return { ok: false, message: "이메일 형식을 확인해 주세요." };
       if (!["auth/operation-not-allowed", "auth/network-request-failed", "auth/configuration-not-found"].includes(code))
         return { ok: false, message: "신청 처리에 실패했습니다. 잠시 후 다시 시도해 주세요." };
@@ -226,8 +229,19 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
   }
   const snap = await getDoc(doc(db, COL.staff, uid)).catch(() => null);
   if (!snap || !snap.exists()) {
+    // 고아 계정 복구 (2026-08-31): 가입 중 Auth 사용자만 만들어지고 신청 문서 쓰기가 실패한 경우 —
+    // 승인 대기 문서를 즉석 재생성해 "이미 등록된 이메일 ↔ 계정 정보 없음" 데드엔드를 제거한다.
+    // 역할은 기본 상담사(COUNSELOR)로 접수 — 담당자(행정) 신청이었다면 마스터가 삭제 후 재신청 안내.
+    await setDoc(doc(db, COL.staff, uid), {
+      email,
+      name: email.split("@")[0],
+      dept: "",
+      role: "COUNSELOR",
+      status: "PENDING",
+      created_at: new Date().toISOString(),
+    }).catch(() => {});
     await fbSignOut(auth).catch(() => {});
-    return { ok: false, message: "계정 정보가 없습니다. 계정 신청을 먼저 진행해 주세요." };
+    return { ok: false, message: "계정 신청이 승인 대기 상태로 접수되었습니다. 마스터 승인 후 로그인할 수 있습니다." };
   }
   const s = snap.data() as { name: string; role: AdminRole; status: AccountStatus };
   if (s.status === "PENDING") {

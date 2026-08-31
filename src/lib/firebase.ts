@@ -60,6 +60,56 @@ export function getAuthInst(): Auth {
   return getAuth(getApp());
 }
 
+// ── 보조 앱 인스턴스 (2026-08-31) ──
+// 같은 브라우저에서 관리자 로그인/로그아웃과 학생 익명 제출·계정 가입 처리가 서로의
+// 인증 세션을 파괴하던 문제의 근본 수정 — 용도별로 Auth 세션을 물리적으로 분리한다.
+//  · "student": 학생 응답 제출 전용 익명 세션. 관리자 로그아웃(fbSignOut)의 영향을 받지 않아
+//    같은 브라우저 재응시 시 익명 uid가 유지된다.
+//  · "signup": 교직원 가입 신청 전용. createUserWithEmailAndPassword가 현재 로그인
+//    세션(마스터 등)을 갈아타지 않도록 격리한다.
+
+function secondaryApp(name: string): FirebaseApp {
+  return initializeApp(firebaseConfig, name);
+}
+
+let _studentApp: FirebaseApp | null = null;
+let _studentDb: Firestore | null = null;
+
+export function getStudentAuth(): Auth {
+  if (!_studentApp) _studentApp = secondaryApp("student");
+  return getAuth(_studentApp);
+}
+
+export function getStudentDb(): Firestore {
+  if (!_studentApp) _studentApp = secondaryApp("student");
+  if (!_studentDb) _studentDb = initializeFirestore(_studentApp, { ignoreUndefinedProperties: true });
+  return _studentDb;
+}
+
+let _signupApp: FirebaseApp | null = null;
+let _signupDb: Firestore | null = null;
+
+export function getSignupAuth(): Auth {
+  if (!_signupApp) _signupApp = secondaryApp("signup");
+  return getAuth(_signupApp);
+}
+
+export function getSignupDb(): Firestore {
+  if (!_signupApp) _signupApp = secondaryApp("signup");
+  if (!_signupDb) _signupDb = initializeFirestore(_signupApp, { ignoreUndefinedProperties: true });
+  return _signupDb;
+}
+
+/** 임의 Auth 인스턴스의 로그인 상태 복원 대기 (authReady의 인스턴스 지정판) */
+export function authReadyFor(auth: Auth): Promise<void> {
+  return new Promise((resolve) => {
+    const unsub = onAuthStateChanged(auth, () => {
+      unsub();
+      resolve();
+    });
+  });
+}
+
 /**
  * 새로고침 직후 Firebase가 로그인 상태를 복원할 때까지 대기.
  * 인증이 필요한 첫 조회(fetch) 전에 반드시 호출 — 복원 전에 조회하면 권한 거부로 폴백돼 버림.

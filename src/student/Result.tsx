@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
-import { saveResponseToCloud } from "../lib/saveResponse";
+import { saveResponseToCloud, type ResponsePayload } from "../lib/saveResponse";
+import { CLOUD_ENABLED } from "../lib/firebase";
 import { getUnscored, getCerts } from "../lib/sessionState";
 import { evaluate } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
@@ -70,11 +71,13 @@ export default function Result() {
     return evaluate(survey, diag, { surveyItems, diagnosticBank, levelRules });
   }, [hasData, survey, diag]);
 
-  // 응답 클라우드 제출 (설정 전에는 no-op) — 같은 세션에서 1회만
-  const [uploaded, setUploaded] = useState(sessionStorage.getItem("mjc_ready_uploaded") === "Y");
-  useEffect(() => {
-    if (!hasData || !evalResult || !profile || uploaded) return;
-    void saveResponseToCloud({
+  // 응답 클라우드 제출 (설정 전에는 no-op) — 결과지 도달 시 자동 + 실패 시 수동 재시도 (2026-08-31)
+  // "제출 완료" 판단은 플래그가 아니라 제출 성공 당시의 응답 스냅샷(JSON) 비교 —
+  // 응답을 수정하고 결과지에 다시 오면 자동으로 재제출된다. 키는 sessionState.KEYS.uploaded와 동일.
+  const SUBMIT_KEY = "mjc_ready_uploaded";
+  const payload = useMemo<ResponsePayload | null>(() => {
+    if (!hasData || !evalResult || !profile) return null;
+    return {
       profile,
       survey,
       unscored: getUnscored(),
@@ -87,14 +90,34 @@ export default function Result() {
         level: evalResult.level,
         route_tag: evalResult.routeTag,
       },
-    }).then((ok) => {
-      if (ok) {
-        sessionStorage.setItem("mjc_ready_uploaded", "Y");
-        setUploaded(true);
-      }
-    });
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasData, evalResult]);
+  const serialized = useMemo(() => (payload ? JSON.stringify(payload) : ""), [payload]);
+  const [submitState, setSubmitState] = useState<"OFF" | "SAVING" | "DONE" | "FAIL">(CLOUD_ENABLED ? "SAVING" : "OFF");
+  const [retryTick, setRetryTick] = useState(0);
+  useEffect(() => {
+    if (!payload || !CLOUD_ENABLED) return;
+    if (sessionStorage.getItem(SUBMIT_KEY) === serialized) {
+      setSubmitState("DONE"); // 동일 내용은 이미 제출됨 — 재전송 생략
+      return;
+    }
+    let cancelled = false;
+    setSubmitState("SAVING");
+    void saveResponseToCloud(payload).then((outcome) => {
+      if (cancelled) return;
+      if (outcome === "OK") {
+        sessionStorage.setItem(SUBMIT_KEY, serialized);
+        setSubmitState("DONE");
+      } else {
+        setSubmitState(outcome === "OFF" ? "OFF" : "FAIL");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serialized, retryTick]);
 
   if (!hasData || !evalResult) {
     return (
@@ -227,6 +250,19 @@ export default function Result() {
           </button>
         </section>
 
+        {submitState === "FAIL" && (
+          <section className="card submit-fail">
+            <strong>⚠ 응답 제출에 실패했습니다</strong>
+            <p>
+              네트워크 상태를 확인한 뒤 다시 시도해 주세요. 제출이 완료되기 전에는 응답이 이 기기에만
+              저장되어 있어, 이 화면을 닫으면 학교에 전달되지 않습니다.
+            </p>
+            <button className="btn btn--primary" onClick={() => setRetryTick((t) => t + 1)}>
+              다시 제출하기
+            </button>
+          </section>
+        )}
+
         <div className="actions">
           <button
             className="btn btn--ghost"
@@ -245,7 +281,8 @@ export default function Result() {
         </div>
 
         <footer className="legal">
-          {uploaded && <>응답이 안전하게 제출되었습니다. </>}
+          {submitState === "DONE" && <>응답이 안전하게 제출되었습니다. </>}
+          {submitState === "SAVING" && <>응답 제출 중… </>}
           {templates.legal_footer}
         </footer>
       </main>

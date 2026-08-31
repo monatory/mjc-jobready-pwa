@@ -709,6 +709,22 @@ body {
   text-align: center;
   padding: 8px 12px;
 }
+/* 응답 제출 실패 배너 — 결과지 하단, 재시도 버튼 동반 */
+.submit-fail {
+  text-align: center;
+  border: 1.5px solid #c0392b;
+  background: #fdf3f2;
+}
+.submit-fail strong {
+  display: block;
+  color: #c0392b;
+  margin-bottom: 6px;
+}
+.submit-fail p {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
 .muted {
   color: var(--muted);
   font-size: 0.83rem;
@@ -761,6 +777,7 @@ body {
 @media print {
   .app-header,
   .actions,
+  .submit-fail,
   .cta-card .btn {
     display: none !important;
   }
