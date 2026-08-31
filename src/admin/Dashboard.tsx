@@ -4,7 +4,7 @@
 // 시범: mock 40명(실제 엔진 판정)을 미리보기 모드로 표시. Firestore 연동 시 데이터 소스만 교체.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useStudents } from "./responsesSource";
+import { useStudents, inPeriod } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, sheetKeys } from "./csvExport";
 import { recommendationMaster, domainLabels, levelRules } from "../lib/dataLoader";
 
@@ -32,28 +32,36 @@ export default function Dashboard() {
     if (session && isCounselSide(session.role) && session.role !== "MASTER") navigate("/counsel", { replace: true });
   }, [session, navigate]);
 
+  // ── 집계 기간 (검사 실시일 기준) — 종합 현황·데이터 다운로드 공통 적용 (2026-08-31) ──
+  const [period, setPeriod] = useState<{ from: string; to: string }>({ from: "", to: "" });
+  const periodOn = Boolean(period.from || period.to);
+  const periodStudents = useMemo(
+    () => (periodOn ? students.filter((s) => inPeriod(s, period.from, period.to)) : students),
+    [students, period, periodOn]
+  );
+
   // ── 집계 ──
   const kpi = useMemo(() => {
-    const total = students.length;
-    const byLevel = [1, 2, 3, 4].map((l) => students.filter((s) => s.result.level === l).length);
-    const avgJas = total > 0 ? Math.round(students.reduce((s, x) => s + x.result.jas, 0) / total) : 0;
+    const total = periodStudents.length;
+    const byLevel = [1, 2, 3, 4].map((l) => periodStudents.filter((s) => s.result.level === l).length);
+    const avgJas = total > 0 ? Math.round(periodStudents.reduce((s, x) => s + x.result.jas, 0) / total) : 0;
     // 프리셋 "취업지원 우선대상"과 동일 정의: 진로=취업 AND JAS≥컷오프 AND 희망시기≤6개월
-    const priority = students.filter(
+    const priority = periodStudents.filter(
       (s) =>
         s.survey.career_direction === "EMPLOYMENT" &&
         s.result.jas >= rules.jas_cutoff_level3 &&
         ["WITHIN_3M", "WITHIN_6M"].includes(s.survey.employment_timing)
     ).length;
-    const counsel = students.filter((s) => s.survey.counsel_wish === "YES").length;
-    const nonEmp = students.filter((s) => s.result.routeTag === "FURTHER_STUDY_STARTUP").length;
+    const counsel = periodStudents.filter((s) => s.survey.counsel_wish === "YES").length;
+    const nonEmp = periodStudents.filter((s) => s.result.routeTag === "FURTHER_STUDY_STARTUP").length;
     return { total, byLevel, avgJas, priority, counsel, nonEmp };
-  }, [students]);
+  }, [periodStudents]);
 
-  const depts = useMemo(() => [...new Set(students.map((s) => s.dept))].sort(), [students]);
+  const depts = useMemo(() => [...new Set(periodStudents.map((s) => s.dept))].sort(), [periodStudents]);
   const deptStats = useMemo(
     () =>
       depts.map((d) => {
-        const list = students.filter((s) => s.dept === d);
+        const list = periodStudents.filter((s) => s.dept === d);
         return {
           dept: d,
           count: list.length,
@@ -62,10 +70,42 @@ export default function Dashboard() {
           counsel: list.filter((s) => s.survey.counsel_wish === "YES").length,
         };
       }),
-    [students, depts]
+    [periodStudents, depts]
   );
 
   const maxLevelCount = Math.max(...kpi.byLevel, 1);
+
+  // 집계 기간 설정 바 — 종합 현황·데이터 다운로드 두 섹션에 공통 렌더 (상태 공유)
+  const periodBar = (
+    <div className="card period-bar">
+      <span className="period-bar__label">집계 기간 (검사 실시일)</span>
+      <input
+        type="date"
+        className="input period-bar__date"
+        value={period.from}
+        max={period.to || undefined}
+        onChange={(e) => setPeriod((p) => ({ ...p, from: e.target.value }))}
+      />
+      <span className="muted">~</span>
+      <input
+        type="date"
+        className="input period-bar__date"
+        value={period.to}
+        min={period.from || undefined}
+        onChange={(e) => setPeriod((p) => ({ ...p, to: e.target.value }))}
+      />
+      {periodOn ? (
+        <>
+          <span className="period-bar__on">적용 중 — {periodStudents.length}명 / 전체 {students.length}명</span>
+          <button className="btn btn--ghost btn--sm" onClick={() => setPeriod({ from: "", to: "" })}>
+            전체 기간으로
+          </button>
+        </>
+      ) : (
+        <span className="muted small">비워두면 전체 기간 기준으로 집계·추출합니다.</span>
+      )}
+    </div>
+  );
 
   // ── 인증 게이트 ──
   if (!session)
@@ -145,6 +185,7 @@ export default function Dashboard() {
         {section === "overview" && (
           <>
             <h1 className="admin__title">종합 현황</h1>
+            {periodBar}
             <div className="kpi-row">
               <div className="kpi"><span>전체 응답자</span><strong>{kpi.total}</strong></div>
               <div className="kpi kpi--accent"><span>취업지원 우선대상</span><strong>{kpi.priority}</strong></div>
@@ -252,8 +293,10 @@ export default function Dashboard() {
             <h1 className="admin__title">데이터 다운로드</h1>
             <p className="muted">
               계획서 §6-2의 5개 Sheet 정의(data/excel_columns.json)대로 원자료를 추출합니다. UTF-8 BOM — Excel 한글 호환.
-              시범은 Sheet별 CSV, 본 구현 시 xlsx 다중 시트 1파일로 통합(제안 12건-⑥). 다운로드는 현재 필터와 무관하게 전체 기준.
+              시범은 Sheet별 CSV, 본 구현 시 xlsx 다중 시트 1파일로 통합(제안 12건-⑥).
+              아래 <strong>집계 기간</strong>을 설정하면 해당 기간에 검사를 실시한 학생만 추출됩니다 (비우면 전체).
             </p>
+            {periodBar}
             <p className="muted">
               <strong>운영용(실명)</strong>은 학번·성명이 포함된 개인정보 파일 — 접근 제한된 폴더에만 보관하세요.
               <strong> 연구용(익명)</strong>은 학번을 익명 일련번호(R001…)로 치환하고 성명을 제거한 추출본 —
@@ -263,10 +306,10 @@ export default function Dashboard() {
               {sheetKeys.map((k) => (
                 <div className="card dl-card" key={k}>
                   <strong>{k}</strong>
-                  <button className="btn btn--primary" onClick={() => exportSheet(k, students)}>
+                  <button className="btn btn--primary" onClick={() => exportSheet(k, periodStudents)}>
                     운영용 CSV (실명)
                   </button>
-                  <button className="btn btn--ghost" onClick={() => exportSheetForResearch(k, students)}>
+                  <button className="btn btn--ghost" onClick={() => exportSheetForResearch(k, periodStudents)}>
                     연구용 CSV (익명)
                   </button>
                 </div>

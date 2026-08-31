@@ -17,6 +17,17 @@ export interface StudentsData {
 }
 
 const MOCK: StudentsData = { students: mockStudents, source: "MOCK" };
+
+/** 기간(검사 실시일, YYYY-MM-DD) 포함 여부 — 관리자 집계·명단 상세 필터 공용 (2026-08-31)
+ *  from/to가 모두 비면 전체 포함. 기간이 설정됐는데 실시일이 없는 레코드는 제외(귀속 불가). */
+export function inPeriod(s: StudentRecord, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  const d = (s.completed_at || "").slice(0, 10);
+  if (!d) return false;
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
 // 클라우드 조회가 끝나기 전 표시 상태 — mock이 먼저 그려졌다 실측으로 바뀌는
 // "잠깐 다른 데이터가 떴다 사라지는" 깜빡임 방지 (2026-08-31 사용자 보고)
 const LOADING: StudentsData = { students: [], source: "LOADING" };

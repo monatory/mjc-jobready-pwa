@@ -3,7 +3,7 @@
 // 담당자(행정)에게는 연락 기록이 화면·CSV 어디에도 노출되지 않는다 (2026-08-30 사용자 확정).
 import { useMemo, useState } from "react";
 import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
-import { useStudents } from "./responsesSource";
+import { useStudents, inPeriod } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
 import { domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
 import type { AdminSession } from "./auth";
@@ -68,13 +68,17 @@ interface AdvFilter {
   certCat: string;     // 자격 분류 (OA/전공/어학/운전면허/기타)
   timing: string;      // 취업 희망시기
   gov: string;         // 정부지원 연계의향
+  dateFrom: string;    // 검사 실시일 기간 시작 (YYYY-MM-DD) — 기간별 취합 (2026-08-31)
+  dateTo: string;      // 검사 실시일 기간 끝
 }
 const EMPTY_ADV: AdvFilter = {
   contact: "", referral: "", employment: "", direction: "", counsel: "", majorLink: "",
   homeRegion: "", region: "", jobGroup: "", cert: "", certCat: "", timing: "", gov: "",
+  dateFrom: "", dateTo: "",
 };
 
 const matchesAdv = (s: StudentRecord, f: AdvFilter, outreach: Record<string, OutreachEntry>): boolean => {
+  if ((f.dateFrom || f.dateTo) && !inPeriod(s, f.dateFrom, f.dateTo)) return false;
   if (f.contact && statusOf(outreach, s.student_id) !== f.contact) return false;
   if (f.referral && referralStageOf(outreach, s.student_id) !== f.referral) return false;
   if (f.employment && employmentStatusOf(outreach, s.student_id) !== f.employment) return false;
@@ -286,6 +290,27 @@ export default function StudentsPanel({
       <details className="card adv-filter" open>
         <summary>상세 필터 {Object.values(adv).some(Boolean) && <span className="adv-filter__on">적용 중</span>}</summary>
         <div className="adv-filter__grid">
+          {/* 검사 실시일 기간 — 기간별 대상자 취합·CSV 추출 (2026-08-31) */}
+          <label className="adv-filter__field adv-filter__field--range">
+            <span>실시일 기간</span>
+            <div className="adv-filter__range">
+              <input
+                type="date"
+                className="input"
+                value={adv.dateFrom}
+                max={adv.dateTo || undefined}
+                onChange={(e) => setAdv((prev) => ({ ...prev, dateFrom: e.target.value }))}
+              />
+              <span className="muted">~</span>
+              <input
+                type="date"
+                className="input"
+                value={adv.dateTo}
+                min={adv.dateFrom || undefined}
+                onChange={(e) => setAdv((prev) => ({ ...prev, dateTo: e.target.value }))}
+              />
+            </div>
+          </label>
           {advFields.map(([field, label, opts]) => (
             <label className="adv-filter__field" key={field}>
               <span>{label}</span>

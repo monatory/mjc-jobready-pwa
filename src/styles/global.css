@@ -709,6 +709,43 @@ body {
   text-align: center;
   padding: 8px 12px;
 }
+/* 집계 기간 설정 바 — 관리자 종합 현황·데이터 다운로드 (2026-08-31) */
+.period-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+.period-bar__label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--navy);
+}
+.period-bar__date {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+.period-bar__on {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1a7f37;
+}
+
+/* 상세 필터 — 실시일 기간(from~to) 입력 */
+.adv-filter__range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.adv-filter__range .input {
+  padding: 6px 8px;
+  font-size: 0.82rem;
+  min-width: 0;
+}
+
 /* 명단 정렬 선택 — 필터 결과 바의 인원 수 옆 (2026-08-31) */
 .filter-count__sort {
   display: inline-block;
