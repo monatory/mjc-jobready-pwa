@@ -13,6 +13,7 @@ import {
   setSurvey,
   setUnscored,
   setCerts,
+  GRADE_PATTERN,
   type CertEntry,
 } from "../lib/sessionState";
 
@@ -40,8 +41,10 @@ export default function Survey() {
   const requiredDone = useMemo(() => {
     // 휴대전화는 상담사가 먼저 연락하는 시스템의 핵심 채널 — 필수 (숫자 10~11자리)
     const phoneOk = /^01[0-9]-?\d{3,4}-?\d{4}$/.test(profile.phone.trim());
+    // 학년: 본과 1~3 / 심화 1~2 / 졸업(연도 4자리 필수) — sessionState.GRADE_PATTERN
+    const gradeOk = GRADE_PATTERN.test(profile.grade);
     const profileOk =
-      profile.student_id.trim() && profile.name.trim() && profile.dept.trim() && profile.grade && phoneOk;
+      profile.student_id.trim() && profile.name.trim() && profile.dept.trim() && gradeOk && phoneOk;
     const surveyOk = scoredItemEntries.every(([key]) => answers[key]);
     return Boolean(profileOk && surveyOk);
   }, [profile, answers]);
@@ -131,7 +134,7 @@ export default function Survey() {
       <AppHeader step={2} />
       <main className="container">
         {showErrors && !requiredDone && (
-          <div className="alert">필수 항목(기본 정보 5개, 설문 {scoredItemEntries.length}개)을 모두 입력해 주세요. 휴대전화는 010-0000-0000 형식으로 입력해 주세요.</div>
+          <div className="alert">필수 항목(기본 정보 5개, 설문 {scoredItemEntries.length}개)을 모두 입력해 주세요. 휴대전화는 010-0000-0000 형식으로, 졸업생은 졸업 연도 4자리를 입력해 주세요.</div>
         )}
 
         <section className="card">
@@ -169,18 +172,57 @@ export default function Survey() {
               />
             </div>
             <div className="field">
-              <label className="field__label">학년</label>
-              <div className="option-row">
-                {["1", "2", "3"].map((g) => (
+              <label className="field__label">학년 (과정 구분)</label>
+              {/* 본과 1~3 / 전공심화 1~2 / 졸업생(연도 입력) — 2026-08-31 세분화 */}
+              <div className="grade-picker">
+                <div className="grade-picker__row">
+                  <span className="grade-picker__track">본과</span>
+                  {["1", "2", "3"].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`chip ${profile.grade === `본과${n}` ? "chip--on" : ""}`}
+                      onClick={() => setProfileState({ ...profile, grade: `본과${n}` })}
+                    >
+                      {n}학년
+                    </button>
+                  ))}
+                </div>
+                <div className="grade-picker__row">
+                  <span className="grade-picker__track">심화</span>
+                  {["1", "2"].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`chip ${profile.grade === `심화${n}` ? "chip--on" : ""}`}
+                      onClick={() => setProfileState({ ...profile, grade: `심화${n}` })}
+                    >
+                      {n}학년
+                    </button>
+                  ))}
+                </div>
+                <div className="grade-picker__row">
+                  <span className="grade-picker__track">졸업</span>
                   <button
-                    key={g}
                     type="button"
-                    className={`chip ${profile.grade === g ? "chip--on" : ""}`}
-                    onClick={() => setProfileState({ ...profile, grade: g })}
+                    className={`chip ${profile.grade.startsWith("졸업") ? "chip--on" : ""}`}
+                    onClick={() => setProfileState({ ...profile, grade: "졸업" })}
                   >
-                    {g}학년
+                    졸업생
                   </button>
-                ))}
+                  {profile.grade.startsWith("졸업") && (
+                    <input
+                      className="input grade-picker__year"
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="졸업 연도 (예: 2025)"
+                      value={profile.grade.slice(2)}
+                      onChange={(e) =>
+                        setProfileState({ ...profile, grade: `졸업${e.target.value.replace(/\D/g, "")}` })
+                      }
+                    />
+                  )}
+                </div>
               </div>
             </div>
             <div className="field">

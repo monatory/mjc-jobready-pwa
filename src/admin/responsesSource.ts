@@ -10,13 +10,16 @@ import { surveyItems, diagnosticBank, levelRules, recommendationMaster } from ".
 import { mockStudents, type StudentRecord } from "./mockStudents";
 import type { ResponsePayload } from "../lib/saveResponse";
 
-export type StudentsSource = "CLOUD" | "MOCK";
+export type StudentsSource = "CLOUD" | "MOCK" | "LOADING";
 export interface StudentsData {
   students: StudentRecord[];
   source: StudentsSource;
 }
 
 const MOCK: StudentsData = { students: mockStudents, source: "MOCK" };
+// 클라우드 조회가 끝나기 전 표시 상태 — mock이 먼저 그려졌다 실측으로 바뀌는
+// "잠깐 다른 데이터가 떴다 사라지는" 깜빡임 방지 (2026-08-31 사용자 보고)
+const LOADING: StudentsData = { students: [], source: "LOADING" };
 
 function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentRecord {
   const result = evaluate(raw.survey, raw.diag, { surveyItems, diagnosticBank, levelRules }) as EvaluationResult;
@@ -47,6 +50,7 @@ function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentR
 }
 
 let cache: Promise<StudentsData> | null = null;
+let lastKnown: StudentsData | null = null; // 조회 완료 결과 — 화면 전환 시 동기 재사용(깜빡임 없음)
 
 async function fetchStudents(): Promise<StudentsData> {
   if (!CLOUD_ENABLED) return MOCK;
@@ -70,21 +74,27 @@ async function fetchStudents(): Promise<StudentsData> {
 
 /** 세션당 1회 조회 캐시 — 로그인·로그아웃 시 무효화(권한이 바뀌므로 재조회 필요) */
 export function fetchStudentsCached(): Promise<StudentsData> {
-  return (cache ??= fetchStudents());
+  return (cache ??= fetchStudents().then((d) => (lastKnown = d)));
 }
 
 const listeners = new Set<() => void>();
 export function invalidateStudentsCache(): void {
   cache = null;
+  lastKnown = null;
   listeners.forEach((l) => l());
 }
 
-/** 화면용 훅 — mock으로 즉시 그리고, 실측이 오면 교체. 캐시 무효화 시 자동 재조회 */
+/** 화면용 훅 — 클라우드 설정 시 조회가 끝날 때까지 "불러오는 중"(빈 목록)으로 표시하고
+ *  결과(실측 또는 mock 폴백)로 교체한다. 캐시 무효화(로그인/로그아웃) 시 자동 재조회.
+ *  캐시가 이미 채워진 상태(화면 간 이동)에서는 then이 즉시 이행돼 깜빡임이 없다. */
 export function useStudents(): StudentsData {
-  const [data, setData] = useState<StudentsData>(MOCK);
+  const [data, setData] = useState<StudentsData>(() => lastKnown ?? (CLOUD_ENABLED ? LOADING : MOCK));
   useEffect(() => {
     let alive = true;
-    const load = () => void fetchStudentsCached().then((d) => alive && setData(d));
+    const load = () => {
+      if (CLOUD_ENABLED && !cache) setData(LOADING); // 재조회 시작 — mock 깜빡임 방지
+      void fetchStudentsCached().then((d) => alive && setData(d));
+    };
     load();
     listeners.add(load);
     return () => {

@@ -36,7 +36,7 @@ export default function Dashboard() {
   const kpi = useMemo(() => {
     const total = students.length;
     const byLevel = [1, 2, 3, 4].map((l) => students.filter((s) => s.result.level === l).length);
-    const avgJas = Math.round(students.reduce((s, x) => s + x.result.jas, 0) / total);
+    const avgJas = total > 0 ? Math.round(students.reduce((s, x) => s + x.result.jas, 0) / total) : 0;
     // 프리셋 "취업지원 우선대상"과 동일 정의: 진로=취업 AND JAS≥컷오프 AND 희망시기≤6개월
     const priority = students.filter(
       (s) =>
@@ -137,7 +137,9 @@ export default function Dashboard() {
         <div className="admin__banner">
           {source === "CLOUD"
             ? `실측 데이터 — Firebase에 저장된 학생 응답 ${students.length}건을 표시 중입니다.`
-            : `미리보기 모드 — 가상 학생 ${students.length}명(실제 판정엔진 통과)으로 표시 중. Firebase 설정 후 실측 데이터로 자동 전환됩니다.`}
+            : source === "LOADING"
+              ? "데이터 불러오는 중… (공유 저장소 조회)"
+              : `미리보기 모드 — 가상 학생 ${students.length}명(실제 판정엔진 통과)으로 표시 중. Firebase 설정 후 실측 데이터로 자동 전환됩니다.`}
         </div>
 
         {section === "overview" && (

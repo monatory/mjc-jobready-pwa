@@ -22,6 +22,14 @@ import {
 } from "./outreach";
 import CounselRecord from "./CounselRecord";
 import { loadAgencies } from "./agencies";
+import { gradeLabel } from "../lib/sessionState";
+
+// ── 정렬 (2026-08-31 상담사 요구 — JAS 고정 정렬 → 선택형) ──
+type SortKey = "RECENT" | "JAS" | "TIMING" | "CONTACT" | "REFERRAL";
+// 미연락 우선: 아직 손대지 않은 학생(미연락→무응답)이 위로
+const CONTACT_PRIORITY = ["NONE", "NO_RESPONSE", "CONTACTED", "RESERVED", "DONE"];
+// 외부연계: 처리 필요한 단계(연계 희망)부터 진행 순으로, 해당 없음은 아래로
+const REFERRAL_PRIORITY = ["WANTED", "REFERRED", "FOLLOWUP", "CLOSED", "NONE"];
 
 export const LEVEL_NAMES: Record<number, string> = { 1: "진로탐색", 2: "진로설정", 3: "취업준비", 4: "실전취업" };
 const rules = levelRules as unknown as { jas_cutoff_level3: number };
@@ -127,6 +135,7 @@ export default function StudentsPanel({
   const [deptFilter, setDeptFilter] = useState<string>("");
   const [search, setSearch] = useState("");
   const [adv, setAdv] = useState<AdvFilter>(EMPTY_ADV);
+  const [sortKey, setSortKey] = useState<SortKey>("RECENT"); // 기본: 최근 검사한 학생이 위로
   const [detail, setDetail] = useState<StudentRecord | null>(null);
 
   const depts = useMemo(() => [...new Set(students.map((s) => s.dept))].sort(), [students]);
@@ -134,6 +143,23 @@ export default function StudentsPanel({
   // 외부연계 사후관리 대상: 연계 완료·사후관리 중 (종결 전까지 상담사가 챙겨야 하는 학생)
   const inFollowup = (s: StudentRecord) =>
     ["REFERRED", "FOLLOWUP"].includes(referralStageOf(outreach, s.student_id));
+
+  // 취업 희망시기 순위 — survey_items의 선택지 순서(임박한 순) 그대로 사용 (하드코딩 금지 §4)
+  const timingRank = (s: StudentRecord) => {
+    const i = optionsOf("employment_timing").findIndex((o) => o.value === s.survey.employment_timing);
+    return i < 0 ? 99 : i;
+  };
+  const compareBy: Record<SortKey, (a: StudentRecord, b: StudentRecord) => number> = {
+    RECENT: (a, b) => (b.completed_at || "").localeCompare(a.completed_at || ""),
+    JAS: (a, b) => b.result.jas - a.result.jas,
+    TIMING: (a, b) => timingRank(a) - timingRank(b) || b.result.jas - a.result.jas,
+    CONTACT: (a, b) =>
+      CONTACT_PRIORITY.indexOf(statusOf(outreach, a.student_id)) -
+        CONTACT_PRIORITY.indexOf(statusOf(outreach, b.student_id)) || b.result.jas - a.result.jas,
+    REFERRAL: (a, b) =>
+      REFERRAL_PRIORITY.indexOf(referralStageOf(outreach, a.student_id)) -
+        REFERRAL_PRIORITY.indexOf(referralStageOf(outreach, b.student_id)) || b.result.jas - a.result.jas,
+  };
 
   const filtered = useMemo(() => {
     let list = students;
@@ -145,9 +171,22 @@ export default function StudentsPanel({
     list = list.filter((s) => matchesAdv(s, adv, outreach));
     if (search.trim())
       list = list.filter((s) => s.name.includes(search.trim()) || s.student_id.includes(search.trim()));
-    return [...list].sort((a, b) => b.result.jas - a.result.jas);
+    return [...list].sort(compareBy[sortKey]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [students, presets, queueOnly, followupOnly, levelFilter, deptFilter, adv, search, outreach, showOutreach]);
+  }, [students, presets, queueOnly, followupOnly, levelFilter, deptFilter, adv, search, outreach, showOutreach, sortKey]);
+
+  // 정렬 선택지 — 연락상태·외부연계 기준은 상담사 워크스페이스에서만
+  const sortOptions: Array<[SortKey, string]> = [
+    ["RECENT", "최근 검사순"],
+    ["JAS", "JAS 높은 순"],
+    ["TIMING", "취업 희망시기 빠른 순"],
+    ...(showOutreach
+      ? ([
+          ["CONTACT", "미연락 우선"],
+          ["REFERRAL", "외부연계 단계순"],
+        ] as Array<[SortKey, string]>)
+      : []),
+  ];
 
   // 상담사 전용 요소를 제외한 상세 필터 구성
   const advFields = (
@@ -269,7 +308,19 @@ export default function StudentsPanel({
       </details>
 
       <div className="filter-result-bar">
-        <p className="muted filter-count">{filtered.length}명 (JAS 높은 순)</p>
+        <p className="muted filter-count">
+          {filtered.length}명
+          <select
+            className="input filter-bar__select filter-count__sort"
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            title="명단 정렬 기준"
+          >
+            {sortOptions.map(([key, label]) => (
+              <option key={key} value={key}>정렬: {label}</option>
+            ))}
+          </select>
+        </p>
         <div className="filter-result-bar__dl">
           <button
             className="btn btn--primary btn--sm"
@@ -286,7 +337,7 @@ export default function StudentsPanel({
         <table className="admin-table admin-table--hover">
           <thead>
             <tr>
-              <th>학번</th><th>성명</th><th>연락처</th><th>학과</th><th>학년</th><th>진로방향</th>
+              <th>실시일</th><th>학번</th><th>성명</th><th>연락처</th><th>학과</th><th>학년</th><th>진로방향</th>
               <th>전공연계</th><th>JAS</th><th>Level</th><th>희망시기</th><th>상담</th>
               {showOutreach && <><th>연락상태</th><th>외부연계</th><th>취업</th></>}
             </tr>
@@ -296,6 +347,7 @@ export default function StudentsPanel({
               const st = statusOf(outreach, s.student_id);
               return (
                 <tr key={s.student_id} onClick={() => setDetail(s)}>
+                  <td className="small" title={s.completed_at}>{s.completed_at ? s.completed_at.slice(0, 10) : "—"}</td>
                   <td>{s.student_id}</td>
                   <td><strong>{s.name}</strong></td>
                   <td className="num">
@@ -305,7 +357,7 @@ export default function StudentsPanel({
                     </a>
                   </td>
                   <td>{s.dept}</td>
-                  <td>{s.grade}</td>
+                  <td>{gradeLabel(s.grade)}</td>
                   <td>{surveyAnswerLabel("career_direction", s.survey.career_direction)}</td>
                   <td>{s.unscored.major_link === "Y" ? "전공진출" : s.unscored.major_link === "N" ? "방향전환" : "—"}</td>
                   <td className="num">{s.result.jas}</td>
@@ -349,7 +401,7 @@ export default function StudentsPanel({
           <div className="modal card admin-detail" onClick={(e) => e.stopPropagation()}>
             <div className="admin-detail__head">
               <div>
-                <h3>{detail.name} <span className="muted">({detail.student_id} · {detail.dept} {detail.grade}학년)</span></h3>
+                <h3>{detail.name} <span className="muted">({detail.student_id} · {detail.dept} {gradeLabel(detail.grade)})</span></h3>
                 <p className="admin-detail__phone">
                   📞 <a href={`tel:${detail.phone.replace(/-/g, "")}`}>{detail.phone}</a>
                 </p>

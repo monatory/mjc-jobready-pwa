@@ -709,6 +709,39 @@ body {
   text-align: center;
   padding: 8px 12px;
 }
+/* 명단 정렬 선택 — 필터 결과 바의 인원 수 옆 (2026-08-31) */
+.filter-count__sort {
+  display: inline-block;
+  width: auto;
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+/* 학년 과정 구분 선택 — 본과/심화/졸업 행 구성 (STEP 2 기본 정보) */
+.grade-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.grade-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.grade-picker__track {
+  min-width: 34px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.grade-picker__year {
+  max-width: 170px;
+  padding: 7px 12px;
+  font-size: 0.85rem;
+}
+
 /* 응답 제출 실패 배너 — 결과지 하단, 재시도 버튼 동반 */
 .submit-fail {
   text-align: center;

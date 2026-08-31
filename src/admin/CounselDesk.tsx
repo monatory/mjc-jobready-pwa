@@ -77,7 +77,8 @@ export default function CounselDesk() {
         <div className="admin__brand">
           <span className="app-header__logo">MJC</span>
           <div>
-            <strong>잡카페 상담사 워크스페이스</strong>
+            {/* 좁은 사이드바에서 줄바꿈으로 깨지지 않게 짧은 이름 사용 (2026-08-31) */}
+            <strong>잡카페 워크스페이스</strong>
             <span>비공개 — 상담사 전용</span>
           </div>
         </div>

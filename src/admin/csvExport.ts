@@ -13,6 +13,7 @@ import {
   EMPLOYMENT_LABELS,
 } from "./outreach";
 import { loadAgencies, agencyName } from "./agencies";
+import { gradeLabel } from "../lib/sessionState";
 
 type ColumnDef = { key: string; label: string };
 const SHEETS = excelColumnsJson.sheets as Record<string, ColumnDef[]>;
@@ -56,7 +57,7 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
             student_id: s.student_id,
             name: s.name,
             dept: s.dept,
-            grade: s.grade,
+            grade: gradeLabel(s.grade), // "본과 1학년"·"졸업(2025)" 등 표시 라벨 (2026-08-31 학년 세분화)
             phone: s.phone,
             outreach_status: OUTREACH_LABELS[statusOf(outreach, s.student_id)],
             outreach_memo: outreach[s.student_id]?.memo ?? "",
