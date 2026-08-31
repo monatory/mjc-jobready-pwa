@@ -1,8 +1,8 @@
 // 관리자·상담사 화면의 학생 데이터 소스 — 실측(Firestore ready_responses) 우선, 없으면 mock 미리보기.
 // 실측 문서의 "원응답"을 저장된 스냅샷이 아니라 판정 엔진으로 다시 계산해 표시한다(결정론 §3.1-②).
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { CLOUD_ENABLED, COL, getDb, authReady } from "../lib/firebase";
+import { collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { CLOUD_ENABLED, COL, SEMESTER, getDb, getAuthInst, authReady } from "../lib/firebase";
 import { evaluate, type EvaluationResult } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
 import { resolveRecommendations } from "../../lib/recommendation_resolver.js";
@@ -93,6 +93,62 @@ export function invalidateStudentsCache(): void {
   cache = null;
   lastKnown = null;
   listeners.forEach((l) => l());
+}
+
+/** 학생 프로필 교정 (2026-08-31 사용자 요구 — 학생이 학번·이름·연락처를 잘못 입력하는 경우 상담사가 수정)
+ *  실측(Firestore) 문서의 profile만 고쳐 저장한다. 응답·판정에 쓰이는 값(survey/diag)과
+ *  검사 실시일(saved_at)은 건드리지 않는다. 학번이 바뀌면 문서 키(§7.1 "{학기}_{학번}")가
+ *  바뀌므로 새 키로 복사 후 기존 문서를 삭제한다(삭제 권한은 firestore.rules 참조). */
+export async function updateStudentProfile(
+  rec: StudentRecord,
+  patch: { student_id: string; name: string; dept: string; grade: string; phone: string }
+): Promise<{ ok: boolean; message: string }> {
+  if (!CLOUD_ENABLED) return { ok: false, message: "미리보기 모드에서는 저장되지 않습니다." };
+  try {
+    await authReady();
+    const auth = getAuthInst();
+    if (!auth.currentUser) return { ok: false, message: "로그인 상태를 확인해 주세요." };
+    const db = getDb();
+    const sem = rec.semester || SEMESTER;
+    const oldId = `${sem}_${rec.student_id}`;
+    const newStudentId = patch.student_id.trim();
+    const newId = `${sem}_${newStudentId}`;
+    const snap = await getDoc(doc(db, COL.responses, oldId));
+    if (!snap.exists()) return { ok: false, message: "원본 응답 문서를 찾을 수 없습니다." };
+    const data = snap.data() as ResponsePayload & Record<string, unknown>;
+    const updated = {
+      ...data,
+      profile: {
+        ...data.profile,
+        student_id: newStudentId,
+        name: patch.name.trim(),
+        dept: patch.dept.trim(),
+        grade: patch.grade,
+        phone: patch.phone.trim(),
+      },
+      auth_uid: auth.currentUser.uid, // Rules validResponse — 마지막 수정자 uid로 갱신
+      profile_edited_by: auth.currentUser.uid,
+      profile_edited_at: new Date().toISOString(),
+      // saved_at(검사 실시일)은 유지 — 교정이 실시일을 바꾸면 안 됨
+    };
+    if (newId !== oldId) {
+      const dup = await getDoc(doc(db, COL.responses, newId));
+      if (dup.exists()) return { ok: false, message: `학번 ${newStudentId}의 응답이 이미 있습니다 — 학번을 확인해 주세요.` };
+      await setDoc(doc(db, COL.responses, newId), updated);
+      try {
+        await deleteDoc(doc(db, COL.responses, oldId));
+      } catch {
+        invalidateStudentsCache();
+        return { ok: true, message: "새 학번으로 저장했지만 기존 학번 문서 삭제 권한이 없어 남아 있습니다 — 규칙 게시 상태를 확인하거나 마스터에게 삭제를 요청하세요." };
+      }
+    } else {
+      await setDoc(doc(db, COL.responses, oldId), updated);
+    }
+    invalidateStudentsCache();
+    return { ok: true, message: "학생 정보가 수정되었습니다." };
+  } catch {
+    return { ok: false, message: "저장에 실패했습니다. 네트워크·권한 상태를 확인해 주세요." };
+  }
 }
 
 /** 화면용 훅 — 클라우드 설정 시 조회가 끝날 때까지 "불러오는 중"(빈 목록)으로 표시하고

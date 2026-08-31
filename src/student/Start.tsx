@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { getResumeState, setConsent, getConsent, clearAll } from "../lib/sessionState";
 import { diagItems, scoredItemEntries } from "../lib/dataLoader";
+import { CLOUD_ENABLED } from "../lib/firebase";
 
 export default function Start() {
   const navigate = useNavigate();
@@ -116,8 +117,11 @@ export default function Start() {
           <button className="btn btn--primary btn--block" disabled={!agreed} onClick={goNext}>
             다음: 기본 정보 입력 →
           </button>
+          {/* 클라우드 모드에서는 실제로 제출되므로 문구를 상태에 맞게 분기 (2026-08-31 — 구 문구는 고지 모순) */}
           <p className="pilot-note">
-            시범운영 프로토타입 — 입력 정보는 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
+            {CLOUD_ENABLED
+              ? "시범운영 중 — 응답은 결과 확인 시 학교 시스템에 안전하게 제출되며, 승인된 교직원만 열람할 수 있습니다."
+              : "시범운영 프로토타입 — 입력 정보는 이 브라우저에만 저장되며 서버로 전송되지 않습니다."}
           </p>
         </section>
         <p className="footer-admin">

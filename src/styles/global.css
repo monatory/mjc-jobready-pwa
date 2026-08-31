@@ -709,6 +709,36 @@ body {
   text-align: center;
   padding: 8px 12px;
 }
+/* 학생 정보 수정 (상세 모달) — 오기입 교정 폼 (2026-08-31) */
+.profile-edit {
+  background: #f7f9fd;
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+.profile-edit h4 {
+  margin-bottom: 10px;
+}
+.profile-edit__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.profile-edit__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.profile-edit__open {
+  margin-left: 10px;
+}
+.profile-edit__msg {
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.profile-edit__msg--ok { color: #1a7f37; }
+.profile-edit__msg--err { color: #c0392b; }
+
 /* 집계 기간 설정 바 — 관리자 종합 현황·데이터 다운로드 (2026-08-31) */
 .period-bar {
   display: flex;

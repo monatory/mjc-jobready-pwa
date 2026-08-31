@@ -3,7 +3,7 @@
 // 담당자(행정)에게는 연락 기록이 화면·CSV 어디에도 노출되지 않는다 (2026-08-30 사용자 확정).
 import { useMemo, useState } from "react";
 import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
-import { useStudents, inPeriod } from "./responsesSource";
+import { useStudents, inPeriod, updateStudentProfile } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
 import { domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
 import type { AdminSession } from "./auth";
@@ -22,7 +22,13 @@ import {
 } from "./outreach";
 import CounselRecord from "./CounselRecord";
 import { loadAgencies } from "./agencies";
-import { gradeLabel } from "../lib/sessionState";
+import { gradeLabel, GRADE_PATTERN } from "../lib/sessionState";
+
+// 학생 정보 수정 폼의 학년 선택지 (졸업은 연도 입력 동반)
+const GRADE_OPTIONS: Array<[string, string]> = [
+  ["본과1", "본과 1학년"], ["본과2", "본과 2학년"], ["본과3", "본과 3학년"],
+  ["심화1", "심화 1학년"], ["심화2", "심화 2학년"], ["졸업", "졸업생"],
+];
 
 // ── 정렬 (2026-08-31 상담사 요구 — JAS 고정 정렬 → 선택형) ──
 type SortKey = "RECENT" | "JAS" | "TIMING" | "CONTACT" | "REFERRAL";
@@ -130,7 +136,7 @@ export default function StudentsPanel({
   session: AdminSession;
   showOutreach: boolean;
 }) {
-  const { students } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
+  const { students, source } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
   const [presets, setPresets] = useState<Set<string>>(new Set());
   const [queueOnly, setQueueOnly] = useState(false);
   const [followupOnly, setFollowupOnly] = useState(false); // 🔗 외부연계 사후관리 큐
@@ -141,6 +147,51 @@ export default function StudentsPanel({
   const [adv, setAdv] = useState<AdvFilter>(EMPTY_ADV);
   const [sortKey, setSortKey] = useState<SortKey>("RECENT"); // 기본: 최근 검사한 학생이 위로
   const [detail, setDetail] = useState<StudentRecord | null>(null);
+
+  // ── 학생 정보 수정 (2026-08-31 사용자 요구 — 오기입 교정) ──
+  const [editing, setEditing] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editMsg, setEditMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [editForm, setEditForm] = useState({ student_id: "", name: "", dept: "", gradeSel: "", gradeYear: "", phone: "" });
+
+  const openEdit = (s: StudentRecord) => {
+    const isGrad = s.grade.startsWith("졸업");
+    setEditForm({
+      student_id: s.student_id,
+      name: s.name,
+      dept: s.dept,
+      gradeSel: isGrad ? "졸업" : s.grade,
+      gradeYear: isGrad ? s.grade.slice(2) : "",
+      phone: s.phone,
+    });
+    setEditMsg(null);
+    setEditing(true);
+  };
+
+  const saveEdit = async (s: StudentRecord) => {
+    const grade = editForm.gradeSel === "졸업" ? `졸업${editForm.gradeYear.trim()}` : editForm.gradeSel;
+    const id = editForm.student_id.trim();
+    // 검증 — Rules(validResponse)와 학생 화면의 조건에 맞춤. 구버전 학년 값은 무변경 시 허용
+    if (id.length < 4 || id.length > 20 || /\s/.test(id))
+      return setEditMsg({ text: "학번은 공백 없이 4~20자로 입력해 주세요.", ok: false });
+    if (!editForm.name.trim() || editForm.name.trim().length > 30)
+      return setEditMsg({ text: "성명을 확인해 주세요 (1~30자).", ok: false });
+    if (!editForm.dept.trim()) return setEditMsg({ text: "학과를 입력해 주세요.", ok: false });
+    if (!(GRADE_PATTERN.test(grade) || grade === s.grade))
+      return setEditMsg({ text: "학년을 확인해 주세요. 졸업생은 졸업 연도 4자리가 필요합니다.", ok: false });
+    if (!/^01[0-9]-?\d{3,4}-?\d{4}$/.test(editForm.phone.trim()))
+      return setEditMsg({ text: "휴대전화는 010-0000-0000 형식으로 입력해 주세요.", ok: false });
+
+    setEditBusy(true);
+    const patch = { student_id: id, name: editForm.name.trim(), dept: editForm.dept.trim(), grade, phone: editForm.phone.trim() };
+    const r = await updateStudentProfile(s, patch);
+    setEditBusy(false);
+    setEditMsg({ text: r.message, ok: r.ok });
+    if (r.ok) {
+      setDetail({ ...s, ...patch }); // 모달 즉시 반영 — 목록은 캐시 무효화로 자동 재조회
+      setEditing(false);
+    }
+  };
 
   const depts = useMemo(() => [...new Set(students.map((s) => s.dept))].sort(), [students]);
   const needsOutreach = needsOutreachWith(outreach);
@@ -371,7 +422,7 @@ export default function StudentsPanel({
             {filtered.map((s) => {
               const st = statusOf(outreach, s.student_id);
               return (
-                <tr key={s.student_id} onClick={() => setDetail(s)}>
+                <tr key={s.student_id} onClick={() => { setDetail(s); setEditing(false); setEditMsg(null); }}>
                   <td className="small" title={s.completed_at}>{s.completed_at ? s.completed_at.slice(0, 10) : "—"}</td>
                   <td>{s.student_id}</td>
                   <td><strong>{s.name}</strong></td>
@@ -422,21 +473,93 @@ export default function StudentsPanel({
       </div>
 
       {detail && (
-        <div className="modal-backdrop" onClick={() => setDetail(null)}>
+        <div className="modal-backdrop" onClick={() => { setDetail(null); setEditing(false); }}>
           <div className="modal card admin-detail" onClick={(e) => e.stopPropagation()}>
             <div className="admin-detail__head">
               <div>
                 <h3>{detail.name} <span className="muted">({detail.student_id} · {detail.dept} {gradeLabel(detail.grade)})</span></h3>
                 <p className="admin-detail__phone">
                   📞 <a href={`tel:${detail.phone.replace(/-/g, "")}`}>{detail.phone}</a>
+                  {!editing && (
+                    <button
+                      className="btn btn--ghost btn--sm profile-edit__open"
+                      disabled={source !== "CLOUD"}
+                      title={source !== "CLOUD" ? "실측 데이터(Firebase 연결) 상태에서만 수정할 수 있습니다" : "학생이 잘못 입력한 기본 정보를 교정합니다"}
+                      onClick={() => openEdit(detail)}
+                    >
+                      ✏ 정보 수정
+                    </button>
+                  )}
                 </p>
                 <span className={`lv-badge lv-badge--l${detail.result.level}`}>
                   Level {detail.result.level} · {LEVEL_NAMES[detail.result.level]}
                 </span>
                 {detail.result.routeTag === "FURTHER_STUDY_STARTUP" && <span className="lv-badge">진학·창업 Route</span>}
               </div>
-              <button className="btn btn--ghost" onClick={() => setDetail(null)}>✕ 닫기</button>
+              <button className="btn btn--ghost" onClick={() => { setDetail(null); setEditing(false); }}>✕ 닫기</button>
             </div>
+
+            {/* 학생 기본 정보 교정 — 학번·성명·학과·학년·연락처 (설문 응답·판정·실시일은 무변경) */}
+            {editing && (
+              <section className="card profile-edit">
+                <h4>학생 정보 수정 <span className="muted small">— 잘못 입력된 기본 정보만 교정합니다. 응답·판정 결과는 바뀌지 않습니다.</span></h4>
+                <div className="profile-edit__grid">
+                  <label className="adv-filter__field">
+                    <span>학번</span>
+                    <input className="input" value={editForm.student_id}
+                      onChange={(e) => setEditForm((f) => ({ ...f, student_id: e.target.value }))} />
+                  </label>
+                  <label className="adv-filter__field">
+                    <span>성명</span>
+                    <input className="input" value={editForm.name}
+                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+                  </label>
+                  <label className="adv-filter__field">
+                    <span>학과</span>
+                    <input className="input" value={editForm.dept}
+                      onChange={(e) => setEditForm((f) => ({ ...f, dept: e.target.value }))} />
+                  </label>
+                  <label className="adv-filter__field">
+                    <span>학년</span>
+                    <div className="adv-filter__range">
+                      <select className="input" value={editForm.gradeSel}
+                        onChange={(e) => setEditForm((f) => ({ ...f, gradeSel: e.target.value }))}>
+                        {/* 구버전 값("1"~"3" 등)은 그대로 두는 선택지를 함께 노출 */}
+                        {!GRADE_OPTIONS.some(([v]) => v === editForm.gradeSel) && editForm.gradeSel !== "졸업" && (
+                          <option value={editForm.gradeSel}>{gradeLabel(editForm.gradeSel)} (기존값)</option>
+                        )}
+                        {GRADE_OPTIONS.map(([v, l]) => (
+                          <option key={v} value={v}>{l}</option>
+                        ))}
+                      </select>
+                      {editForm.gradeSel === "졸업" && (
+                        <input className="input" inputMode="numeric" maxLength={4} placeholder="졸업 연도"
+                          value={editForm.gradeYear}
+                          onChange={(e) => setEditForm((f) => ({ ...f, gradeYear: e.target.value.replace(/\D/g, "") }))} />
+                      )}
+                    </div>
+                  </label>
+                  <label className="adv-filter__field">
+                    <span>휴대전화</span>
+                    <input className="input" inputMode="numeric" value={editForm.phone}
+                      onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
+                  </label>
+                </div>
+                {editForm.student_id.trim() !== detail.student_id && (
+                  <p className="muted small">⚠ 학번을 바꾸면 응답 기록이 새 학번으로 이동합니다. 학번이 정확한지 다시 확인해 주세요.</p>
+                )}
+                <div className="profile-edit__actions">
+                  <button className="btn btn--primary btn--sm" disabled={editBusy} onClick={() => void saveEdit(detail)}>
+                    {editBusy ? "저장 중…" : "저장"}
+                  </button>
+                  <button className="btn btn--ghost btn--sm" disabled={editBusy}
+                    onClick={() => { setEditing(false); setEditMsg(null); }}>
+                    취소
+                  </button>
+                </div>
+              </section>
+            )}
+            {editMsg && <p className={`profile-edit__msg ${editMsg.ok ? "profile-edit__msg--ok" : "profile-edit__msg--err"}`}>{editMsg.text}</p>}
 
             {/* 통합 상담 카드 — 상담사 워크스페이스에서만 노출·수정 (담당자 화면에는 없음) */}
             {showOutreach && (

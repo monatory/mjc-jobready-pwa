@@ -44,7 +44,9 @@ service cloud.firestore {
       allow update: if request.auth != null && validResponse();
       // 조회는 승인된 교직원만 (행정·상담사 공통 — 실명이므로 공개 금지)
       allow read: if isActiveStaff();
-      allow delete: if isMaster();
+      // 삭제: 승인 교직원 (2026-08-31 확장) — 학생이 학번을 잘못 입력한 응답을 교정할 때
+      // 문서 키("{학기}_{학번}")가 바뀌므로 새 키로 복사 후 기존 문서를 삭제해야 한다.
+      allow delete: if isActiveStaff();
 
       function validResponse() {
         return request.resource.data.keys().hasAll(

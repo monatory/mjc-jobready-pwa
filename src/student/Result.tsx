@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { saveResponseToCloud, type ResponsePayload } from "../lib/saveResponse";
 import { CLOUD_ENABLED } from "../lib/firebase";
-import { getUnscored, getCerts } from "../lib/sessionState";
+import { getUnscored, getCerts, gradeLabel } from "../lib/sessionState";
 import { evaluate } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
 import { resolveRecommendations } from "../../lib/recommendation_resolver.js";
@@ -162,7 +162,7 @@ export default function Result() {
           <p className="level-card__body">{tpl.body}</p>
           {profile && (
             <p className="level-card__who">
-              {profile.name} ({profile.dept} {profile.grade}학년)
+              {profile.name} ({profile.dept} {gradeLabel(profile.grade)})
             </p>
           )}
         </section>
