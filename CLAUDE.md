@@ -324,8 +324,10 @@ v0.1 배점 구조상 취업 방향 학생의 최저 Level은 2가 되며, 이�
 - **validResponse 강화 (2026-09-01 감사 F02)**: 문서키 == "{semester}_{student_id}" 일치·학번
   영숫자 4~20자·학기 형식·survey/diag map 타입을 서버에서 강제 — 익명 인증만으로 임의 학번
   문서를 덮어쓰는 경로 차단. 근본 해결(학생 인증·App Check)은 §12-11에서.
-- ⚠ **규칙 게시 상태**: 2026-08-31 update 완화·delete 확장 + 2026-09-01 validResponse 강화가 담긴
-  `firestore.rules`가 **아직 콘솔에 게시되지 않음** — 게시 전까지 타 기기 재응시 갱신·학번 교정 불가
+- ✅ **규칙 게시 완료 (2026-09-01)**: 8/31 update 완화·delete 확장 + 9/1 validResponse 강화 +
+  ready_reco_master 규칙을 Firebase CLI(`firebase deploy --only firestore:rules`, `firebase.json` 추가)로
+  일괄 게시. REST 실측 8종 통과 — 타 기기 재응시 갱신 200 / 학번 위조 403 / 비인증·익명의 실명 데이터
+  접근 403 / 익명의 추천 Master 읽기 200. 이후 규칙 변경 시 같은 명령으로 게시
 - **Auth 세션 3분리 (2026-08-31)**: 기본 앱(교직원 로그인) / `"student"` 보조 앱(학생 익명 제출 —
   관리자 로그아웃 무영향) / `"signup"` 보조 앱(가입 신청 — 현재 세션 안 갈아탐). `src/lib/firebase.ts`
 - **제출 실패는 보이게**: 결과지에 실패 배너+재시도 버튼, "제출 완료" 판단은 응답 스냅샷 비교
