@@ -49,6 +49,7 @@ export const COL = {
   outreach: "ready_outreach",   // 상담사 학생 기록 (연락·회차·연계·취업)
   agencies: "ready_agencies",   // 연계기관·취업처 등록부
   staff: "ready_staff",         // 교직원 계정 메타 (역할·승인 상태) — Auth uid 키
+  recoMaster: "ready_reco_master", // 추천활동 Master 오버라이드 (시드 JSON 위에 병합 — src/lib/recoMaster.ts)
 } as const;
 
 let _app: FirebaseApp | null = null;

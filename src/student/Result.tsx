@@ -12,11 +12,11 @@ import {
   surveyItems,
   diagnosticBank,
   levelRules,
-  recommendationMaster,
   resultTemplates,
   domainLabels,
   diagItems,
 } from "../lib/dataLoader";
+import { getMasterSync, pullRecoMasterForStudent, type RecoActivity } from "../lib/recoMaster";
 import { getProfile, getSurvey, getDiag, clearAll } from "../lib/sessionState";
 import { todayStr } from "../lib/dates";
 
@@ -86,13 +86,30 @@ export default function Result() {
   // 응답을 수정하고 결과지에 다시 오면 자동으로 재제출된다. 키는 sessionState.KEYS.uploaded와 동일.
   const SUBMIT_KEY = "mjc_ready_uploaded";
 
+  // 추천활동 Master — 관리자가 등록·수정한 최신본(Firestore)을 우선 사용 (§4: 운영 중엔 Firestore가 진실).
+  // 조회 실패·미설정 시 시드+로컬 캐시 병합본으로 계산 — 결과 표시를 막지 않는다.
+  // master가 확정된 뒤에 추천·제출 스냅샷을 계산해 "시드로 1차 제출 → 최신본으로 재제출" 이중 쓰기를 피한다.
+  const [recoMaster, setRecoMaster] = useState<{ activities: RecoActivity[] } | null>(
+    CLOUD_ENABLED ? null : getMasterSync()
+  );
+  useEffect(() => {
+    if (!CLOUD_ENABLED) return;
+    let cancelled = false;
+    void pullRecoMasterForStudent().then((m) => {
+      if (!cancelled) setRecoMaster(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 보완영역·추천활동 — 결과 표시와 제출 스냅샷(추천 코드)이 같은 계산을 공유
   const analysis = useMemo(() => {
-    if (!evalResult) return null;
+    if (!evalResult || !recoMaster) return null;
     const weak = findWeakAreas(evalResult.domainScores, diagnosticBank, rules.weak_area);
-    const recs = resolveRecommendations(evalResult.level, weak, recommendationMaster, { today: todayStr() });
+    const recs = resolveRecommendations(evalResult.level, weak, recoMaster, { today: todayStr() });
     return { weak, recs };
-  }, [evalResult]);
+  }, [evalResult, recoMaster]);
 
   const payload = useMemo<ResponsePayload | null>(() => {
     if (!hasData || !evalResult || !analysis || !profile) return null;
@@ -122,8 +139,9 @@ export default function Result() {
   useEffect(() => {
     if (!CLOUD_ENABLED) return;
     if (!payload) {
+      // Master 조회 대기 중(analysis 미확정)에는 판단 보류 — 조회 완료 후 이 효과가 다시 돈다.
       // 학생 정보(profile)가 유실된 채 결과만 남은 경우 — "제출 중…" 영구 표시 방지 (감사 S2-11)
-      if (hasData) setSubmitState("NO_PROFILE");
+      if (hasData && analysis) setSubmitState("NO_PROFILE");
       return;
     }
     if (sessionStorage.getItem(SUBMIT_KEY) === serialized) {
@@ -148,8 +166,9 @@ export default function Result() {
     return () => {
       cancelled = true;
     };
+    // analysis: Master 조회 완료 시 payload 없이도(프로필 유실) NO_PROFILE 판정이 돌도록 포함
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serialized, retryTick]);
+  }, [serialized, retryTick, analysis]);
 
   if (!hasData || !evalResult) {
     return (
@@ -168,13 +187,28 @@ export default function Result() {
     );
   }
 
+  // 추천활동 Master 조회 대기 (클라우드 모드 첫 진입 순간) — 최신 추천 확정 전에는 결과를 그리지 않는다
+  if (!analysis) {
+    return (
+      <div className="page">
+        <AppHeader resultMode />
+        <main className="container">
+          <section className="card empty-card">
+            <h2>결과를 준비하고 있어요…</h2>
+            <p>추천 활동 정보를 불러오는 중입니다. 잠시만 기다려 주세요.</p>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   const r = evalResult;
   const isNonEmployment = r.routeTag === "FURTHER_STUDY_STARTUP";
   const tpl = isNonEmployment
     ? templates.route_overrides.FURTHER_STUDY_STARTUP
     : templates.levels[String(r.level)];
 
-  const { weak, recs } = analysis!; // hasData·evalResult 보장 구간
+  const { weak, recs } = analysis; // hasData·evalResult·analysis 보장 구간
 
   return (
     <div className="page">

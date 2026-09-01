@@ -8,7 +8,8 @@ import { CLOUD_ENABLED, COL, SEMESTER, getDb, getAuthInst, authReady } from "../
 import { evaluate, type EvaluationResult } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
 import { resolveRecommendations, type RecommendationActivity } from "../../lib/recommendation_resolver.js";
-import { surveyItems, diagnosticBank, levelRules, recommendationMaster } from "../lib/dataLoader";
+import { surveyItems, diagnosticBank, levelRules } from "../lib/dataLoader";
+import { getMasterSync } from "../lib/recoMaster"; // 시드+관리자 등록분 병합 (§4: 운영 중엔 Firestore가 진실)
 import { localDateStr, todayStr } from "../lib/dates";
 import { mockStudents, type StudentRecord } from "./mockStudents";
 import { moveOutreachLocal } from "./outreach";
@@ -42,7 +43,7 @@ const LOADING: StudentsData = { students: [], source: "LOADING" };
 /** 결과 시점 추천 스냅샷(코드 배열) 복원 — 활성기간이 지나도 "그때 추천했던 활동" 유지 (감사 P3-11).
  *  스냅샷이 없는 구버전 응답은 현행 규칙으로 재계산(오늘 날짜 기준). */
 function restoreRecs(raw: ResponsePayload, level: number, weak: ReturnType<typeof findWeakAreas>): RecommendationActivity[] {
-  const master = recommendationMaster as unknown as { activities: RecommendationActivity[] };
+  const master = getMasterSync() as unknown as { activities: RecommendationActivity[] };
   const codes = raw.recommendations;
   if (Array.isArray(codes) && codes.length > 0) {
     const found = codes
@@ -50,7 +51,7 @@ function restoreRecs(raw: ResponsePayload, level: number, weak: ReturnType<typeo
       .filter((a): a is RecommendationActivity => Boolean(a));
     if (found.length > 0) return found;
   }
-  return resolveRecommendations(level, weak, recommendationMaster, { today: todayStr() });
+  return resolveRecommendations(level, weak, master, { today: todayStr() });
 }
 
 function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentRecord {

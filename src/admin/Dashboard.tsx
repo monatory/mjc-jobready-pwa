@@ -12,7 +12,8 @@ import {
   exportIntegratedForResearch,
   sheetKeys,
 } from "./csvExport";
-import { recommendationMaster, domainLabels, levelRules } from "../lib/dataLoader";
+import { levelRules } from "../lib/dataLoader";
+import RecoMasterPanel from "./RecoMasterPanel";
 
 const rules = levelRules as unknown as {
   jas_cutoff_level3: number;
@@ -32,9 +33,6 @@ export default function Dashboard() {
   const [session, setSession] = useState<AdminSession | null>(getSession);
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
-  const [masterState, setMasterState] = useState(
-    () => (recommendationMaster as { activities: Array<{ recommendation_code: string; name: string; owner: string; levels: number[]; weak_domains: string[]; priority: number; active: boolean; active_from: string; active_to: string; student_desc: string }> }).activities
-  );
 
   // 상담사 계열은 이 화면 접근 불가 — 전용 워크스페이스로 이동
   useEffect(() => {
@@ -265,42 +263,7 @@ export default function Dashboard() {
         {section === "recommend" && (
           <>
             <h1 className="admin__title">추천활동 관리 (Recommendation Master)</h1>
-            <p className="muted">
-              시범: 로컬 미리보기 — ON/OFF 전환은 이 화면에서만 반영됩니다. 본 구현 시 Firestore recommendationMaster에 저장.
-            </p>
-            <div className="table-wrap card">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>코드</th><th>활동명</th><th>담당</th><th>적용 Level</th><th>취약영역</th>
-                    <th>우선순위</th><th>활성기간</th><th>활성</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {masterState.map((a, i) => (
-                    <tr key={a.recommendation_code} className={a.active ? "" : "row-off"}>
-                      <td className="code">{a.recommendation_code}</td>
-                      <td className="cell-wrap"><strong>{a.name}</strong><br /><span className="muted small">{a.student_desc}</span></td>
-                      <td>{a.owner === "CAREER" ? "진로컨설턴트" : "취업컨설턴트"}</td>
-                      <td>{a.levels.map((l) => `L${l}`).join(" ")}</td>
-                      <td>{a.weak_domains.map((d) => (d === "ANY" ? "전체" : domainLabels[d])).join(" · ")}</td>
-                      <td className="num">{a.priority}</td>
-                      <td className="small">{a.active_from} ~ {a.active_to}</td>
-                      <td>
-                        <button
-                          className={`toggle ${a.active ? "toggle--on" : ""}`}
-                          onClick={() =>
-                            setMasterState((prev) => prev.map((x, j) => (j === i ? { ...x, active: !x.active } : x)))
-                          }
-                        >
-                          {a.active ? "ON" : "OFF"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <RecoMasterPanel editor={session.name || session.id} />
           </>
         )}
 
