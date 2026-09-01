@@ -13,6 +13,7 @@ import PasswordModal from "./PasswordModal";
 import StudentsPanel, { needsOutreachWith } from "./StudentsPanel";
 import AgencyManager from "./AgencyManager";
 import { loadOutreach, onOutreachChange, referralStageOf } from "./outreach";
+import { useSidebarFold } from "./useSidebarFold";
 
 type Section = "students" | "agencies" | "counselors";
 const SECTION_PERMS: Record<Section, string> = {
@@ -27,6 +28,7 @@ export default function CounselDesk() {
   const [session, setSession] = useState<AdminSession | null>(getSession);
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("students");
+  const [folded, toggleFold] = useSidebarFold();
   const [cloudState, setCloudState] = useState<CloudState>("LOCAL");
   // 상담 기록 변경 통지 구독 — 저장·동기화 후 헤더 카운트가 즉시 갱신 (감사 C4-11)
   const [outreachVersion, setOutreachVersion] = useState(0);
@@ -76,7 +78,7 @@ export default function CounselDesk() {
   ).filter(([key]) => canAccess(session.role, SECTION_PERMS[key]));
 
   return (
-    <div className="admin admin--counsel">
+    <div className={`admin admin--counsel ${folded ? "admin--folded" : ""}`}>
       <aside className="admin__side">
         <div className="admin__brand">
           <span className="app-header__logo">MJC</span>
@@ -119,9 +121,18 @@ export default function CounselDesk() {
           </div>
         </div>
         <button className="admin__back" onClick={() => navigate("/")}>← 학생 화면으로</button>
+        {/* 명단(최대 15열)을 한 화면에 담기 위한 메뉴 접기 — 선택은 브라우저에 기억됨 (2026-09-02) */}
+        <button className="admin__fold" onClick={toggleFold} title="메뉴를 접어 명단을 넓게 봅니다">
+          ◀ 메뉴 접기
+        </button>
       </aside>
 
       <main className="admin__main">
+        {folded && (
+          <button className="admin__unfold" onClick={toggleFold} title="메뉴 다시 보기">
+            ☰ 메뉴
+          </button>
+        )}
         <div className="admin__banner admin__banner--counsel">
           상담사 전용 공간 — 연락 기록·상담 메모는 이곳에서만 보이며, 담당자(행정) 화면과 일반 다운로드에는 포함되지 않습니다.{" "}
           {cloudState === "CLOUD"

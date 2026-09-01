@@ -82,11 +82,46 @@ service cloud.firestore {
     // ── 추천활동 Master (2026-09-01 관리자 등록·수정 기능) ──
     // 비개인 운영 데이터 — 학생 결과지가 익명 인증으로 읽어 최신 추천을 계산해야 하므로
     // 읽기는 "인증된 누구나"(익명 포함). 쓰기는 승인 교직원(관리자 화면 §6.1 추천활동 관리).
+    // (2026-09-02 강화) 형태를 서버에서 강제 — levels가 배열이 아닌 문서 1건만 섞여도
+    // 판정 엔진이 TypeError를 던져 학생 결과지가 백지가 되고 관리자 명단이 전건 스킵된다.
+    // 물리 삭제는 금지(tombstone만) — 삭제 표식이 다른 관리자·학생 캐시에 전파돼야 하므로.
     match /ready_reco_master/{code} {
       allow read: if request.auth != null;
-      allow write: if isActiveStaff()
-        && request.resource.data.recommendation_code == code
-        && request.resource.data.size() <= 20;
+      allow create, update: if isActiveStaff() && validReco(code);
+      allow delete: if false;
+
+      function validReco(code) {
+        return request.resource.data.recommendation_code == code
+          && code.matches('^[A-Z][A-Z0-9_]{2,39}$')
+          && request.resource.data.size() <= 20
+          && (
+            // tombstone: 삭제 표식 + (선택) 삭제 시점 정의 보존
+            request.resource.data.deleted == true
+            // 활동 정의: 엔진이 그대로 소비하는 필드의 타입·범위를 전부 확인
+            || (request.resource.data.keys().hasAll(
+                  ['recommendation_code','name','owner','levels','weak_domains',
+                   'priority','student_desc','active_from','active_to','active'])
+                && request.resource.data.name is string
+                && request.resource.data.name.size() >= 1
+                && request.resource.data.name.size() <= 100
+                && request.resource.data.owner in ['CAREER', 'EMPLOYMENT']
+                && request.resource.data.levels is list
+                && request.resource.data.levels.size() >= 1
+                && request.resource.data.levels.size() <= 4
+                && request.resource.data.weak_domains is list
+                && request.resource.data.weak_domains.size() >= 1
+                && request.resource.data.priority is int
+                && request.resource.data.priority >= 1
+                && request.resource.data.priority <= 5
+                && request.resource.data.student_desc is string
+                && request.resource.data.student_desc.size() <= 500
+                && request.resource.data.active_from is string
+                && request.resource.data.active_from.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                && request.resource.data.active_to is string
+                && request.resource.data.active_to.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                && request.resource.data.active is bool)
+          );
+      }
     }
 
     // ── 교직원 계정 메타 ─────────────────────────────────

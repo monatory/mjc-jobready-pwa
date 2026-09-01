@@ -92,11 +92,15 @@ export default function Result() {
   const [recoMaster, setRecoMaster] = useState<{ activities: RecoActivity[] } | null>(
     CLOUD_ENABLED ? null : getMasterSync()
   );
+  // 최신 목록을 못 받아 시드·캐시로 계산한 경우 표시 (조용한 폴백 금지 §7.2.1-3, 점검 [중간-2])
+  const [recoStale, setRecoStale] = useState(false);
   useEffect(() => {
     if (!CLOUD_ENABLED) return;
     let cancelled = false;
     void pullRecoMasterForStudent().then((m) => {
-      if (!cancelled) setRecoMaster(m);
+      if (cancelled) return;
+      setRecoMaster({ activities: m.activities });
+      setRecoStale(m.stale);
     });
     return () => {
       cancelled = true;
@@ -270,6 +274,12 @@ export default function Result() {
 
         <section className="card">
           <h2 className="card__title">지금 추천하는 행동</h2>
+          {recoStale && (
+            <p className="muted small">
+              ※ 추천 목록을 최신으로 불러오지 못해 기본 목록으로 안내하고 있어요. 상담 시 담당 컨설턴트가 현재
+              운영 중인 프로그램을 다시 안내해 드립니다.
+            </p>
+          )}
           {recs.length === 0 && <p className="muted">현재 학기에 등록된 추천활동이 없습니다. 상담을 통해 안내받으세요.</p>}
           <ol className="rec-list">
             {recs.map((a) => (

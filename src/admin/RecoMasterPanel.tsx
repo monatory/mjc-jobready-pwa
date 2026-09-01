@@ -9,9 +9,12 @@ import {
   deleteRecoActivity,
   onRecoMasterChanged,
   isSeedCode,
+  updatedAtOf,
+  getDroppedCodes,
   type RecoActivity,
   type RecoPullState,
 } from "../lib/recoMaster";
+import { invalidateStudentsCache } from "./responsesSource";
 import { domainLabels } from "../lib/dataLoader";
 import { todayStr } from "../lib/dates";
 
@@ -21,6 +24,12 @@ const OWNER_LABELS: Record<RecoActivity["owner"], string> = {
 };
 
 const CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,39}$/;
+
+/** YYYY-MM-DD 두 날짜의 일수 차 (만료 임박 판정용, 로컬 기준 문자열 비교와 함께 사용) */
+function daysBetween(from: string, to: string): number {
+  const ms = new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime();
+  return Math.round(ms / 86400000);
+}
 
 interface FormState {
   code: string;
@@ -89,15 +98,34 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
     []
   );
 
+  // 활성기간 만료 감시 — 시드 10건이 모두 2026-12-31 종료라 방치하면 어느 날 추천이 전부 사라진다
+  // (점검 [높음-4]: 날짜가 지나야 증상이 보이므로 미리 화면에 경고한다)
+  const today = todayStr();
+  const expiry = useMemo(() => {
+    const live = list.filter((a) => a.active);
+    const expired = live.filter((a) => a.active_to < today);
+    const soon = live.filter((a) => a.active_to >= today && daysBetween(today, a.active_to) <= 60);
+    const soonestDate = soon.map((a) => a.active_to).sort()[0] ?? "";
+    return { expired: expired.length, soon: soon.length, soonestDate };
+  }, [list, today]);
+  const dropped = useMemo(() => getDroppedCodes(), [list]);
+
+  // 편집 시작 시점의 원격 갱신 시각 — 저장 때 비교해 남의 수정을 덮어쓰지 않는다 (점검 [높음-2])
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | undefined>(undefined);
+
   const openNew = () => {
     setForm(emptyForm());
     setEditing("NEW");
+    setBaseUpdatedAt(undefined);
     setFormError("");
+    setSaveFail(""); // 이전 실패 경고가 새 폼에 남지 않게 (점검 L-5)
   };
   const openEdit = (a: RecoActivity) => {
     setForm(toForm(a));
     setEditing(a.recommendation_code);
+    setBaseUpdatedAt(updatedAtOf(a.recommendation_code));
     setFormError("");
+    setSaveFail("");
   };
   const closeForm = () => {
     setEditing(null);
@@ -115,9 +143,23 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
     if (!(f.priority >= 1 && f.priority <= 5)) return "우선순위는 1(높음)~5(낮음) 사이여야 합니다.";
     if (!f.active_from || !f.active_to) return "활성기간(시작·종료일)을 모두 입력해 주세요.";
     if (f.active_from > f.active_to) return "활성 종료일이 시작일보다 빠릅니다.";
+    // 이미 지난 종료일로 등록하면 학생에게 한 번도 노출되지 않는다 (점검 L-4)
+    if (f.active && f.active_to < todayStr())
+      return `활성 종료일(${f.active_to})이 이미 지났습니다. 기간을 연장하거나 "활성" 체크를 해제해 주세요.`;
     if (!f.student_desc.trim()) return "학생 노출 설명을 입력해 주세요. (결과지에 그대로 표시됩니다)";
     return "";
   };
+
+  /** 저장 성공 후 공통 처리 — 명단·CSV가 쓰는 학생 캐시를 무효화해야 추천 변경이 즉시 반영된다
+   *  (점검 [높음-1]: 캐시를 비우지 않으면 관리자가 "저장했는데 명단에 안 보인다"를 겪는다) */
+  const afterSaved = () => {
+    setSaveFail("");
+    setList(listForAdmin());
+    invalidateStudentsCache();
+  };
+
+  const conflictMsg = (name: string) =>
+    `저장하지 않았습니다 — "${name}"을(를) 다른 관리자가 방금 수정했습니다. 새로고침으로 최신 내용을 확인한 뒤 다시 편집해 주세요. (덮어쓰기를 막았습니다)`;
 
   const submit = async () => {
     const err = validate(form);
@@ -127,7 +169,7 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
       recommendation_code: form.code.trim().toUpperCase(),
       name: form.name.trim(),
       owner: form.owner,
-      levels: [...form.levels].sort(),
+      levels: [...form.levels].sort((a, b) => a - b), // 숫자 정렬 — 문자열 비교 금지 (점검 L-2)
       weak_domains: [...form.weak_domains],
       priority: form.priority,
       student_desc: form.student_desc.trim(),
@@ -136,36 +178,50 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
       active: form.active,
     };
     setBusy(true);
-    const result = await saveRecoActivity(activity, editor);
+    const { result } = await saveRecoActivity(activity, editor, editing === "NEW" ? undefined : baseUpdatedAt);
     setBusy(false);
     if (result === "FAIL") {
       setSaveFail(`저장 실패 — ${activity.name}. 네트워크·로그인·규칙 게시 상태를 확인한 뒤 다시 시도해 주세요.`);
       return;
     }
-    setSaveFail("");
-    setList(listForAdmin());
+    if (result === "CONFLICT") {
+      setSaveFail(
+        editing === "NEW"
+          ? `저장하지 않았습니다 — 코드 ${activity.recommendation_code}는 이미 공유 저장소에 존재합니다. 새로고침 후 기존 활동을 수정해 주세요.`
+          : conflictMsg(activity.name)
+      );
+      return;
+    }
+    afterSaved();
     closeForm();
   };
 
   const toggleActive = async (a: RecoActivity) => {
-    const result = await saveRecoActivity({ ...a, active: !a.active }, editor);
+    if (busy) return; // 연타 시 stale 값으로 두 번 쓰는 것 방지 (점검 L-1)
+    setBusy(true);
+    const { result } = await saveRecoActivity(
+      { ...a, active: !a.active },
+      editor,
+      updatedAtOf(a.recommendation_code)
+    );
+    setBusy(false);
     if (result === "FAIL") setSaveFail(`ON/OFF 저장 실패 — ${a.name}. 다시 시도해 주세요.`);
-    else {
-      setSaveFail("");
-      setList(listForAdmin());
-    }
+    else if (result === "CONFLICT") setSaveFail(conflictMsg(a.name));
+    else afterSaved();
   };
 
   const remove = async (a: RecoActivity) => {
+    if (busy) return;
     const seedNote = isSeedCode(a.recommendation_code)
       ? "\n(기본 시드 활동입니다 — 삭제하면 학생 추천에서 완전히 제외됩니다. 잠시 내리려면 OFF를 권장합니다)"
       : "";
     if (!window.confirm(`"${a.name}" 활동을 삭제할까요? 학생 결과지 추천에서 즉시 제외됩니다.${seedNote}`)) return;
+    setBusy(true);
     const result = await deleteRecoActivity(a.recommendation_code, editor);
+    setBusy(false);
     if (result === "FAIL") setSaveFail(`삭제 실패 — ${a.name}. 다시 시도해 주세요.`);
     else {
-      setSaveFail("");
-      setList(listForAdmin());
+      afterSaved();
       if (editing === a.recommendation_code) closeForm();
     }
   };
@@ -183,6 +239,24 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
         {cloudState === "FAIL" && "⚠ 공유 저장소 조회 실패 — 아래 목록은 시드 기준일 수 있습니다. 네트워크·규칙 게시 상태 확인 후 새로고침해 주세요."}
       </p>
       {saveFail && <div className="alert">{saveFail}</div>}
+      {expiry.expired > 0 && (
+        <div className="alert">
+          ⚠ 활성 상태인데 <strong>기간이 이미 지난 활동 {expiry.expired}건</strong> — 학생에게 추천되지 않습니다.
+          해당 활동의 활성 종료일을 연장해 주세요.
+        </div>
+      )}
+      {expiry.expired === 0 && expiry.soon > 0 && (
+        <div className="admin__banner">
+          활성 활동 {expiry.soon}건이 <strong>{expiry.soonestDate}</strong>에 종료됩니다. 종료일이 지나면 그 활동은
+          학생 추천에서 자동으로 빠지므로, 다음 학기 운영 계획에 맞춰 기간을 연장해 주세요.
+        </div>
+      )}
+      {dropped.length > 0 && (
+        <div className="alert">
+          ⚠ 형식이 맞지 않아 무시한 활동 {dropped.length}건: {dropped.join(", ")} — 공유 저장소에서 직접 편집된
+          문서일 수 있습니다. 해당 활동을 다시 등록하거나 마스터에게 문의해 주세요.
+        </div>
+      )}
 
       <div className="reco-toolbar">
         <button className="btn btn--primary" onClick={openNew}>＋ 활동 등록</button>
@@ -306,7 +380,10 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
                 <td>{a.levels.map((l) => `L${l}`).join(" ")}</td>
                 <td>{a.weak_domains.map((d) => (d === "ANY" ? "전체" : domainLabels[d] ?? d)).join(" · ")}</td>
                 <td className="num">{a.priority}</td>
-                <td className="small">{a.active_from} ~ {a.active_to}</td>
+                <td className="small">
+                  {a.active_from} ~ {a.active_to}
+                  {a.active && a.active_to < today && <span className="reco-badge reco-badge--warn">기간 만료</span>}
+                </td>
                 <td>
                   <button className={`toggle ${a.active ? "toggle--on" : ""}`} onClick={() => void toggleActive(a)}>
                     {a.active ? "ON" : "OFF"}

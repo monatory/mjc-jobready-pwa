@@ -24,6 +24,7 @@ import AdminLogin from "./Login";
 import Accounts from "./Accounts";
 import PasswordModal from "./PasswordModal";
 import StudentsPanel, { LEVEL_NAMES } from "./StudentsPanel";
+import { useSidebarFold } from "./useSidebarFold";
 
 type Section = "overview" | "students" | "recommend" | "download" | "accounts";
 
@@ -33,6 +34,7 @@ export default function Dashboard() {
   const [session, setSession] = useState<AdminSession | null>(getSession);
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
+  const [folded, toggleFold] = useSidebarFold();
 
   // 상담사 계열은 이 화면 접근 불가 — 전용 워크스페이스로 이동
   useEffect(() => {
@@ -136,7 +138,7 @@ export default function Dashboard() {
   ).filter(([key]) => canAccess(session.role, key));
 
   return (
-    <div className="admin">
+    <div className={`admin ${folded ? "admin--folded" : ""}`}>
       <aside className="admin__side">
         <div className="admin__brand">
           <span className="app-header__logo">MJC</span>
@@ -178,9 +180,18 @@ export default function Dashboard() {
           </div>
         </div>
         <button className="admin__back" onClick={() => navigate("/")}>← 학생 화면으로</button>
+        {/* 명단을 한 화면에 담기 위한 메뉴 접기 — 선택은 브라우저에 기억됨 (2026-09-02) */}
+        <button className="admin__fold" onClick={toggleFold} title="메뉴를 접어 명단을 넓게 봅니다">
+          ◀ 메뉴 접기
+        </button>
       </aside>
 
       <main className="admin__main">
+        {folded && (
+          <button className="admin__unfold" onClick={toggleFold} title="메뉴 다시 보기">
+            ☰ 메뉴
+          </button>
+        )}
         <div className="admin__banner">
           {source === "CLOUD" &&
             `실측 데이터 — Firebase에 저장된 학생 응답 ${students.length}건을 표시 중입니다.${skipped ? ` (형식 오류로 제외 ${skipped}건 — 마스터에게 문의)` : ""}`}

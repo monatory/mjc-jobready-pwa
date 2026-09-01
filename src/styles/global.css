@@ -856,6 +856,11 @@ body {
   padding: 2px 7px;
   vertical-align: middle;
 }
+.reco-badge--warn {
+  color: var(--red);
+  background: #fdecea;
+  margin-left: 6px;
+}
 .reco-actions {
   white-space: nowrap;
 }
@@ -987,12 +992,14 @@ body {
 .admin {
   display: flex;
   min-height: 100vh;
-  max-width: 1440px;
+  /* 명단(최대 15열)이 가로 스크롤 없이 한 화면에 들어오도록 넓은 모니터를 활용 (2026-09-02).
+     1440px 고정 시 가용 1210px < 명단 실측 자연폭 1265px이라 상담사 화면이 항상 잘렸다. */
+  max-width: 1760px;
   margin: 0 auto;
   background: var(--bg);
 }
 .admin__side {
-  width: 230px;
+  width: 210px;
   flex-shrink: 0;
   background: var(--navy);
   color: #fff;
@@ -1062,7 +1069,7 @@ body {
 }
 .admin__main {
   flex: 1;
-  padding: 20px 24px 48px;
+  padding: 16px 18px 32px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1177,6 +1184,83 @@ body {
   min-width: 220px;
   max-width: 340px;
 }
+/* ── 메뉴 접기 — 좁은 화면에서 명단 전 컬럼을 보기 위한 폭 확보 (2026-09-02) ── */
+.admin--folded .admin__side {
+  display: none;
+}
+.admin__fold {
+  font: inherit;
+  font-size: 0.74rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.82);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.admin__fold:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.admin__unfold {
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  align-self: flex-start;
+  background: var(--navy);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.admin--counsel .admin__unfold {
+  background: var(--green, #1a7f37);
+}
+.admin__unfold:hover {
+  opacity: 0.9;
+}
+
+/* 명단 표는 카드 여백까지 조여 가용 폭을 최대로 (셀 여백은 --list가 담당) */
+.table-wrap--list {
+  padding: 8px 10px;
+}
+
+/* ── 학생 명단 표 밀도 (2026-09-02) ─────────────────────────────
+   상담사 워크스페이스 명단은 최대 15열(기본 12 + 연락상태·외부연계·취업)이라 기본 밀도로는
+   어떤 화면에서도 가로로 잘렸다. 셀 여백·배지만 조이고 **글자는 자르거나 줄바꿈하지 않는다**
+   (nowrap 유지 — 값 축약·말줄임 없음). 화면이 좁아질수록 글자 크기를 한 단계씩만 낮춘다.
+   실측(최악 조건 데이터 기준): 기본 1265px → 1108px → 1044px → 1028px.
+   행 높이도 43px → 37px로 낮아져 한 화면에 보이는 학생 수가 늘어난다. */
+.admin-table--list th,
+.admin-table--list td {
+  padding: 7px 6px;
+}
+.admin-table--list .lv-badge {
+  font-size: 0.66rem;
+  padding: 2px 5px;
+}
+.admin-table--list .outreach-badge,
+.admin-table--list .ref-badge,
+.admin-table--list .emp-badge {
+  font-size: 0.68rem;
+  padding: 2px 6px;
+}
+/* 경계 1440: 1366·1400px 노트북에서 몇 px 차이로 잘리던 것을 방지 (실측 1366 → 9px 초과) */
+@media (max-width: 1439px) {
+  .admin-table--list {
+    font-size: 0.75rem;
+  }
+  .admin-table--list th,
+  .admin-table--list td {
+    padding: 6px 4px;
+  }
+}
+@media (max-width: 1279px) {
+  .admin-table--list {
+    font-size: 0.73rem;
+  }
+}
+
 .admin-table--hover tbody tr {
   cursor: pointer;
 }

@@ -242,16 +242,25 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
     // 고아 계정 복구 (2026-08-31): 가입 중 Auth 사용자만 만들어지고 신청 문서 쓰기가 실패한 경우 —
     // 승인 대기 문서를 즉석 재생성해 "이미 등록된 이메일 ↔ 계정 정보 없음" 데드엔드를 제거한다.
     // 역할은 기본 상담사(COUNSELOR)로 접수 — 담당자(행정) 신청이었다면 마스터가 삭제 후 재신청 안내.
-    await setDoc(doc(db, COL.staff, uid), {
+    // 재생성 실패를 삼키면 "접수되었습니다"라고 안내해 놓고 승인 목록에는 뜨지 않아,
+    // 사용자가 오지 않을 승인을 무한정 기다린다 (§7.2.1-2, 2026-09-02 점검 [중간-5])
+    const recovered = await setDoc(doc(db, COL.staff, uid), {
       email,
       name: email.split("@")[0],
       dept: "",
       role: "COUNSELOR",
       status: "PENDING",
       created_at: new Date().toISOString(),
-    }).catch(() => {});
+    })
+      .then(() => true)
+      .catch(() => false);
     await fbSignOut(auth).catch(() => {});
-    return { ok: false, message: "계정 신청이 승인 대기 상태로 접수되었습니다. 마스터 승인 후 로그인할 수 있습니다." };
+    return {
+      ok: false,
+      message: recovered
+        ? "계정 신청이 승인 대기 상태로 접수되었습니다. 마스터 승인 후 로그인할 수 있습니다."
+        : "계정 정보를 등록하지 못했습니다(네트워크·권한 오류). 잠시 후 다시 로그인해 주시고, 반복되면 담당자에게 문의해 주세요.",
+    };
   }
   const s = snap.data() as { name: string; role: AdminRole; status: AccountStatus };
   if (s.status === "PENDING") {

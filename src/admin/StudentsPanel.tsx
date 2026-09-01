@@ -419,8 +419,9 @@ export default function StudentsPanel({
           </button>
         </div>
       </div>
-      <div className="table-wrap card">
-        <table className="admin-table admin-table--hover">
+      <div className="table-wrap table-wrap--list card">
+        {/* --list: 15열 명단이 가로 스크롤 없이 한 화면에 들어가는 밀도 (글자 축약 없음, 2026-09-02) */}
+        <table className="admin-table admin-table--hover admin-table--list">
           <thead>
             <tr>
               <th>실시일</th><th>학번</th><th>성명</th><th>연락처</th><th>학과</th><th>학년</th><th>진로방향</th>

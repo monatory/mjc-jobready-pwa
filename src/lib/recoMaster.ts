@@ -38,6 +38,8 @@ export interface RecoActivity {
 /** 클라우드 오버라이드 문서 — 활동 전체 또는 tombstone */
 type RecoOverride = (RecoActivity | { recommendation_code: string }) & {
   deleted?: boolean;
+  /** 삭제 시점의 활동 정의 — 과거 추천 이력의 활동명 복원용 (현행 목록에는 포함하지 않음) */
+  archived?: RecoActivity;
   updated_at?: string;
   updated_by?: string;
 };
@@ -84,17 +86,64 @@ function notifyChanged(): void {
   listeners.forEach((fn) => fn());
 }
 
-/** 시드 + 오버라이드 병합 목록 (동기) — 시드 순서 유지, 신규 활동은 코드순으로 뒤에 */
+/**
+ * 오버라이드 문서가 판정 엔진에 넣어도 안전한 형태인지 실제로 검사.
+ * 콘솔 수기 편집·스키마 변경으로 levels가 배열이 아닌 문서 1건만 섞여도
+ * resolver의 `a.levels.includes(level)`가 TypeError를 던져 **모든 학생 결과지가 백지**가 되고
+ * 관리자 명단은 학생 전원이 "스키마 불일치"로 스킵된다 (2026-09-02 점검 [높음-3]).
+ * 서버 규칙만으로는 형태를 강제할 수 없으므로 읽는 쪽에서 방어한다.
+ */
+function isValidActivity(o: unknown): o is RecoActivity {
+  if (!o || typeof o !== "object") return false;
+  const a = o as Record<string, unknown>;
+  return (
+    typeof a.recommendation_code === "string" &&
+    a.recommendation_code.length > 0 &&
+    typeof a.name === "string" &&
+    (a.owner === "CAREER" || a.owner === "EMPLOYMENT") &&
+    Array.isArray(a.levels) &&
+    a.levels.every((l) => typeof l === "number") &&
+    Array.isArray(a.weak_domains) &&
+    a.weak_domains.every((d) => typeof d === "string") &&
+    typeof a.priority === "number" &&
+    typeof a.student_desc === "string" &&
+    typeof a.active_from === "string" &&
+    typeof a.active_to === "string" &&
+    typeof a.active === "boolean"
+  );
+}
+
+/** 마지막 병합에서 형태 불량으로 제외된 문서 코드 — 관리자 화면이 경고로 표시 */
+let droppedCodes: string[] = [];
+export function getDroppedCodes(): string[] {
+  return [...droppedCodes];
+}
+
+/** 시드 + 오버라이드 병합 목록 (동기) — 시드 순서 유지, 신규 활동은 코드순으로 뒤에.
+ *  형태 불량 오버라이드는 제외하고(시드가 있으면 시드로 폴백) droppedCodes에 기록한다. */
 export function getMasterSync(): { activities: RecoActivity[] } {
+  const dropped: string[] = [];
   const out: RecoActivity[] = [];
   for (const seed of seedActivities) {
     const ov = overrides[seed.recommendation_code];
     if (ov?.deleted) continue;
-    out.push(ov ? (ov as RecoActivity) : seed);
+    if (!ov) {
+      out.push(seed);
+    } else if (isValidActivity(ov)) {
+      out.push(ov);
+    } else {
+      dropped.push(seed.recommendation_code);
+      out.push(seed); // 깨진 오버라이드는 무시하고 시드 정의를 유지 — 추천이 통째로 사라지지 않게
+    }
   }
-  const customs = Object.values(overrides)
-    .filter((o): o is RecoActivity & RecoOverride => !o.deleted && !seedCodes.has(o.recommendation_code))
-    .sort((a, b) => a.recommendation_code.localeCompare(b.recommendation_code));
+  const customs: RecoActivity[] = [];
+  for (const [code, o] of Object.entries(overrides)) {
+    if (o.deleted || seedCodes.has(code)) continue;
+    if (isValidActivity(o)) customs.push(o);
+    else dropped.push(code); // 시드가 없는 신규 활동은 폴백 대상이 없어 제외만
+  }
+  customs.sort((a, b) => a.recommendation_code.localeCompare(b.recommendation_code));
+  droppedCodes = dropped;
   return { activities: [...out, ...customs] };
 }
 
@@ -127,10 +176,13 @@ export async function pullRecoMaster(): Promise<RecoPullState> {
 }
 
 /** 학생 결과지용 pull — 익명(student) 세션으로 읽기. 실패해도 throw하지 않고 현재 병합본 반환.
- *  타임아웃 동반 — 불안정 네트워크에서 결과지가 "준비 중…"에 고착되지 않게 (감사 S2-01 원칙 준용) */
+ *  타임아웃 동반 — 불안정 네트워크에서 결과지가 "준비 중…"에 고착되지 않게 (감사 S2-01 원칙 준용).
+ *  stale=true는 "최신 목록을 못 받아 시드·캐시로 계산했다"는 뜻 — 결과지가 안내 문구로 표시한다
+ *  (조용한 폴백 금지 §7.2.1-3, 2026-09-02 점검 [중간-2]). */
 const STUDENT_PULL_TIMEOUT_MS = 6000;
-export async function pullRecoMasterForStudent(): Promise<{ activities: RecoActivity[] }> {
-  if (!CLOUD_ENABLED) return getMasterSync();
+export async function pullRecoMasterForStudent(): Promise<{ activities: RecoActivity[]; stale: boolean }> {
+  if (!CLOUD_ENABLED) return { ...getMasterSync(), stale: false }; // 로컬 모드는 시드가 정상 기준
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       (async () => {
@@ -140,16 +192,34 @@ export async function pullRecoMasterForStudent(): Promise<{ activities: RecoActi
         const snap = await getDocs(collection(getStudentDb(), COL.recoMaster));
         applyDocs(snap);
       })(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), STUDENT_PULL_TIMEOUT_MS)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), STUDENT_PULL_TIMEOUT_MS);
+      }),
     ]);
+    return { ...getMasterSync(), stale: false };
   } catch {
-    /* 오프라인·규칙 미게시·타임아웃 — 시드+캐시 기준으로 결과 계산 (결과 표시를 막지 않는다) */
+    // 오프라인·규칙 미게시·타임아웃 — 시드+캐시 기준으로 계산해 결과 표시는 막지 않되 stale로 알린다
+    return { ...getMasterSync(), stale: true };
+  } finally {
+    clearTimeout(timer); // 성공 시에도 타이머 정리
   }
-  return getMasterSync();
 }
 
-/** 활동 등록·수정 (문서키 = recommendation_code). LOCAL 모드에서는 브라우저 캐시에만 반영 */
-export async function saveRecoActivity(activity: RecoActivity, editor: string): Promise<RecoPushResult> {
+/** 저장 결과 — CONFLICT는 "내가 편집을 시작한 뒤 다른 사람이 같은 활동을 바꿨다"는 뜻 */
+export type RecoSaveOutcome = { result: RecoPushResult | "CONFLICT"; remote?: RecoActivity };
+
+/**
+ * 활동 등록·수정 (문서키 = recommendation_code).
+ * 트랜잭션 안에서 **원격 최신본을 먼저 읽어** 편집 시작 시점(baseUpdatedAt)과 비교한다:
+ * 그 사이 누군가 같은 활동을 바꿨으면 덮어쓰지 않고 CONFLICT를 반환해 화면이 알린다
+ * (§7.2.1-1 트랜잭션 병합 원칙 — 2026-09-02 점검 [높음-2] 수정).
+ * baseUpdatedAt이 undefined면 신규 등록 의도이므로 기존 문서가 있을 때 CONFLICT.
+ */
+export async function saveRecoActivity(
+  activity: RecoActivity,
+  editor: string,
+  baseUpdatedAt?: string
+): Promise<RecoSaveOutcome> {
   const docData: RecoOverride = {
     ...activity,
     deleted: false, // 삭제됐던 코드의 재등록은 명시적 관리자 행동이므로 되살림 허용
@@ -163,26 +233,43 @@ export async function saveRecoActivity(activity: RecoActivity, editor: string): 
   };
   if (!CLOUD_ENABLED) {
     applyLocal();
-    return "LOCAL";
+    return { result: "LOCAL" };
   }
   try {
     await authReady();
     const db = getDb();
-    await runTransaction(db, async (tx) => {
-      tx.set(doc(db, COL.recoMaster, activity.recommendation_code), docData);
+    const ref = doc(db, COL.recoMaster, activity.recommendation_code);
+    const conflict = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const remote = snap.exists() ? (snap.data() as RecoOverride) : null;
+      // 신규 등록인데 이미 문서가 있음(다른 관리자가 선점, 또는 과거 삭제분) → 덮어쓰지 않는다
+      if (!baseUpdatedAt && remote && !remote.deleted) return remote;
+      // 수정인데 내가 읽은 이후 원격이 바뀜 → 남의 수정을 지우지 않는다
+      if (baseUpdatedAt && remote && remote.updated_at && remote.updated_at !== baseUpdatedAt) return remote;
+      tx.set(ref, docData);
+      return null;
     });
+    if (conflict) {
+      return { result: "CONFLICT", remote: isValidActivity(conflict) ? conflict : undefined };
+    }
     applyLocal();
-    return "OK";
+    return { result: "OK" };
   } catch {
-    return "FAIL"; // 캐시에도 반영하지 않음 — 공유 안 된 변경이 내 화면에만 있는 착시 방지
+    return { result: "FAIL" }; // 캐시에도 반영하지 않음 — 공유 안 된 변경이 내 화면에만 있는 착시 방지
   }
 }
 
-/** 활동 삭제 — tombstone 마킹 (다른 관리자·학생 화면 캐시에 삭제 전파, §7.2.1-9) */
+/**
+ * 활동 삭제 — tombstone 마킹 (다른 관리자·학생 화면 캐시에 삭제 전파, §7.2.1-9).
+ * 삭제 시점의 활동 정의(archived)를 함께 보존한다 — 과거 학생이 추천받은 활동이 삭제돼도
+ * 명단·CSV에서 활동명을 복원할 수 있게 (2026-09-02 점검 [중간-1]).
+ */
 export async function deleteRecoActivity(code: string, editor: string): Promise<RecoPushResult> {
+  const current = getMasterSync().activities.find((a) => a.recommendation_code === code);
   const tomb: RecoOverride = {
     recommendation_code: code,
     deleted: true,
+    archived: current,
     updated_at: new Date().toISOString(),
     updated_by: editor,
   };
@@ -206,4 +293,17 @@ export async function deleteRecoActivity(code: string, editor: string): Promise<
   } catch {
     return "FAIL";
   }
+}
+
+/** 삭제된 활동을 포함한 정의 조회 — 과거 추천 스냅샷의 활동명 복원용 (이력 표시 전용).
+ *  현행 목록(getMasterSync)에는 절대 포함하지 않는다 — 삭제된 활동이 새로 추천되면 안 되므로. */
+export function findArchivedActivity(code: string): RecoActivity | undefined {
+  const ov = overrides[code];
+  if (ov?.deleted && ov.archived && isValidActivity(ov.archived)) return ov.archived;
+  return seedActivities.find((a) => a.recommendation_code === code);
+}
+
+/** 편집 충돌 판정에 쓰는 원격 갱신 시각 — 화면이 편집 시작 시점 값을 보관했다가 저장 때 전달 */
+export function updatedAtOf(code: string): string | undefined {
+  return overrides[code]?.updated_at;
 }

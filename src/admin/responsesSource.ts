@@ -9,9 +9,10 @@ import { evaluate, type EvaluationResult } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
 import { resolveRecommendations, type RecommendationActivity } from "../../lib/recommendation_resolver.js";
 import { surveyItems, diagnosticBank, levelRules } from "../lib/dataLoader";
-import { getMasterSync } from "../lib/recoMaster"; // 시드+관리자 등록분 병합 (§4: 운영 중엔 Firestore가 진실)
+// 시드+관리자 등록분 병합 (§4: 운영 중엔 Firestore가 진실)
+import { getMasterSync, pullRecoMaster, findArchivedActivity } from "../lib/recoMaster";
 import { localDateStr, todayStr } from "../lib/dates";
-import { mockStudents, type StudentRecord } from "./mockStudents";
+import { getMockStudents, type StudentRecord } from "./mockStudents";
 import { moveOutreachLocal } from "./outreach";
 import type { ResponsePayload } from "../lib/saveResponse";
 
@@ -23,7 +24,7 @@ export interface StudentsData {
   skipped?: number;
 }
 
-const MOCK: StudentsData = { students: mockStudents, source: "MOCK" };
+const mockData = (): StudentsData => ({ students: getMockStudents(), source: "MOCK" });
 
 /** 기간(검사 실시일, YYYY-MM-DD) 포함 여부 — 관리자 집계·명단 상세 필터 공용 (2026-08-31)
  *  from/to가 모두 비면 전체 포함. 기간이 설정됐는데 실시일이 없는 레코드는 제외(귀속 불가).
@@ -46,8 +47,15 @@ function restoreRecs(raw: ResponsePayload, level: number, weak: ReturnType<typeo
   const master = getMasterSync() as unknown as { activities: RecommendationActivity[] };
   const codes = raw.recommendations;
   if (Array.isArray(codes) && codes.length > 0) {
+    // 스냅샷은 "학생이 실제로 본 추천" — 그 사이 활동이 삭제·수정돼도 전건을 복원한다.
+    // 현행 목록에 없으면 tombstone에 보존된 삭제 시점 정의(archived)로 되살린다
+    // (부분 복원 시 관리자·CSV가 학생이 본 것보다 적게 보이던 문제 — 2026-09-02 점검 [중간-1])
     const found = codes
-      .map((c) => master.activities.find((a) => a.recommendation_code === c))
+      .map(
+        (c) =>
+          master.activities.find((a) => a.recommendation_code === c) ??
+          (findArchivedActivity(c) as unknown as RecommendationActivity | undefined)
+      )
       .filter((a): a is RecommendationActivity => Boolean(a));
     if (found.length > 0) return found;
   }
@@ -84,9 +92,13 @@ let cache: Promise<StudentsData> | null = null;
 let lastKnown: StudentsData | null = null; // 조회 완료 결과 — 화면 전환 시 동기 재사용(깜빡임 없음)
 
 async function fetchStudents(): Promise<StudentsData> {
-  if (!CLOUD_ENABLED) return MOCK; // 미리보기(mock)는 클라우드 설정 전에만
+  if (!CLOUD_ENABLED) return mockData(); // 미리보기(mock)는 클라우드 설정 전에만
   try {
     await authReady(); // 새로고침 시 로그인 복원 대기 — 복원 전 조회는 권한 거부됨
+    // 추천활동 Master를 먼저 받아야 학생별 추천이 최신 목록으로 계산된다. 이걸 빼면 관리자가
+    // 활동을 등록·수정해도 명단·상세·CSV가 시드 기준으로 남는다 (2026-09-02 점검 [높음-1]).
+    // 실패해도 학생 조회는 진행 — 추천만 시드·캐시 기준이 된다.
+    await pullRecoMaster();
     const snap = await getDocs(collection(getDb(), COL.responses));
     const students: StudentRecord[] = [];
     let skipped = 0;
@@ -216,7 +228,7 @@ export async function updateStudentProfile(
  *  결과(실측 0건 포함 / 오류)로 교체한다. 캐시 무효화(로그인/로그아웃/새로고침 버튼) 시 자동 재조회.
  *  캐시가 이미 채워진 상태(화면 간 이동)에서는 then이 즉시 이행돼 깜빡임이 없다. */
 export function useStudents(): StudentsData {
-  const [data, setData] = useState<StudentsData>(() => lastKnown ?? (CLOUD_ENABLED ? LOADING : MOCK));
+  const [data, setData] = useState<StudentsData>(() => lastKnown ?? (CLOUD_ENABLED ? LOADING : mockData()));
   useEffect(() => {
     let alive = true;
     const load = () => {

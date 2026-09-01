@@ -175,7 +175,14 @@ function makeStudent(i: number): StudentRecord {
   };
 }
 
-export const mockStudents: StudentRecord[] = Array.from({ length: 40 }, (_, i) => makeStudent(i));
+/** 미리보기용 가상 학생 40명 — **클라우드 설정 전에만** 쓰인다.
+ *  지연 생성: 예전엔 모듈 로드 시점에 40명분 판정(evaluate+findWeakAreas+resolve)이 무조건 돌아
+ *  실측 모드에서도 관리자 화면 진입마다 낭비됐다 (2026-09-02 점검 [중간-4]).
+ *  today/semester 하드코딩은 의도 — 시드 고정 결정론(같은 미리보기 화면 재현)을 위해 유지한다. */
+let _mock: StudentRecord[] | null = null;
+export function getMockStudents(): StudentRecord[] {
+  return (_mock ??= Array.from({ length: 40 }, (_, i) => makeStudent(i)));
+}
 
 /** 설문 응답 코드 → 표시 라벨 */
 export function surveyAnswerLabel(itemKey: string, value: string | undefined): string {
