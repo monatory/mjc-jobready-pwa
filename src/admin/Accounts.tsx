@@ -10,8 +10,8 @@ import {
   removeAccount,
   loadStaffCloud,
   approveStaffCloud,
-  toggleStaffActiveCloud,
-  toggleStaffLeadCloud,
+  setStaffStatusCloud,
+  setStaffLeadCloud,
   removeStaffCloud,
   ROLE_LABELS,
   STATUS_LABELS,
@@ -33,6 +33,7 @@ export default function Accounts({
 }) {
   const [accounts, setAccounts] = useState<AdminAccount[]>(loadAccounts);
   const [cloudMode, setCloudMode] = useState(false);
+  const [actMsg, setActMsg] = useState<string | null>(null);
 
   const refreshCloud = async () => {
     const cloud = await loadStaffCloud();
@@ -49,13 +50,18 @@ export default function Accounts({
   const visible = accounts.filter((a) => roles.includes(a.role));
   const pending = visible.filter((a) => a.status === "PENDING").length;
 
-  // 클라우드/로컬 공용 액션 디스패치
+  // 클라우드/로컬 공용 액션 디스패치 — 클라우드 실패는 반드시 표시 (감사 P3-10·C4-12),
+  // 상태·역할은 토글이 아니라 화면이 계산한 "목표값"을 기록 (감사 F16: 동시 처리 시 의도 반전 방지)
   const act = async (a: AdminAccount, action: "approve" | "toggleActive" | "toggleLead" | "remove") => {
+    setActMsg(null);
     if (cloudMode && a.uid) {
-      if (action === "approve") await approveStaffCloud(a.uid);
-      if (action === "toggleActive") await toggleStaffActiveCloud(a.uid, a.status);
-      if (action === "toggleLead") await toggleStaffLeadCloud(a.uid, a.role);
-      if (action === "remove") await removeStaffCloud(a.uid);
+      let ok = false;
+      if (action === "approve") ok = await approveStaffCloud(a.uid);
+      if (action === "toggleActive") ok = await setStaffStatusCloud(a.uid, a.status === "ACTIVE" ? "DISABLED" : "ACTIVE");
+      if (action === "toggleLead")
+        ok = await setStaffLeadCloud(a.uid, a.role === "COUNSELOR" ? "COUNSELOR_LEAD" : "COUNSELOR");
+      if (action === "remove") ok = await removeStaffCloud(a.uid);
+      if (!ok) setActMsg("⚠ 처리에 실패했습니다 — 네트워크·권한(규칙 게시) 상태를 확인하고 다시 시도해 주세요.");
       await refreshCloud();
     } else {
       if (action === "approve") setAccounts(approveAccount(a.id));
@@ -77,6 +83,7 @@ export default function Accounts({
             ? "공유 저장소에 연결하지 못해 이 브라우저의 로컬 계정을 표시 중입니다."
             : "시범: 이 브라우저에만 저장되는 로컬 계정 — Firebase 설정(docs/FIREBASE_SETUP.md) 후 공유로 전환됩니다."}
       </p>
+      {actMsg && <p className="profile-edit__msg profile-edit__msg--err">{actMsg}</p>}
       <div className="table-wrap card">
         <table className="admin-table">
           <thead>

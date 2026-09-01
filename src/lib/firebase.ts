@@ -30,8 +30,18 @@ const firebaseConfig = {
 /** config가 채워졌는지 — false면 모든 클라우드 경로가 로컬 저장으로 폴백 */
 export const CLOUD_ENABLED = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 
-/** 현재 학기 — 문서키 규칙 "{학기}_{학번}" (§7.1). 학기 전환 시 여기만 갱신 */
-export const SEMESTER = "2026-2";
+/** 현재 학기 자동 산출 — 문서키 규칙 "{학기}_{학번}" (§7.1).
+ *  3~8월 = "{연도}-1", 9~12월 = "{연도}-2", 1~2월 = "{전년도}-2"(2학기는 이듬해 2월까지).
+ *  하드코딩 상수였을 때 학기 전환기에 갱신·재배포를 놓치면 새 학기 응시가 이전 학기 문서를
+ *  덮어써 학기별 누적(명세 핵심)이 깨지는 문제(감사 P5-04)의 수정 — 날짜 기반 결정론 산출. */
+function computeSemester(d: Date): string {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  if (m >= 3 && m <= 8) return `${y}-1`;
+  if (m >= 9) return `${y}-2`;
+  return `${y - 1}-2`;
+}
+export const SEMESTER = computeSemester(new Date());
 
 /** Firestore 컬렉션 이름 (전부 ready_ 접두 — 타 시스템과 이름공간 분리) */
 export const COL = {

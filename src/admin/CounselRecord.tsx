@@ -21,10 +21,12 @@ import {
   type ReferralStage,
   type EmploymentStatus,
   type CounselSession,
+  type OutreachSaveResult,
 } from "./outreach";
 import { AGENCY_TYPE_LABELS, agencyName, type Agency } from "./agencies";
+import { todayStr } from "../lib/dates";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayStr(); // 로컬(KST) 기준 — UTC 사용 시 새벽에 전날로 찍힘 (감사 ENG-05)
 
 export default function CounselRecord({
   student,
@@ -59,70 +61,75 @@ export default function CounselRecord({
   const [empDate, setEmpDate] = useState(entry?.employment?.date ?? "");
   const [empNote, setEmpNote] = useState(entry?.employment?.note ?? "");
 
-  const [savedMsg, setSavedMsg] = useState("");
-  const flash = (msg: string) => {
-    setSavedMsg(msg);
-    window.setTimeout(() => setSavedMsg(""), 1500);
+  const [savedMsg, setSavedMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const flash = (text: string, error = false) => {
+    setSavedMsg({ text, error });
+    window.setTimeout(() => setSavedMsg(null), error ? 5000 : 1500);
+  };
+
+  // 공유 저장 공통 경로 — 트랜잭션 병합 저장 + 실패를 반드시 표시 (감사 C4-02: "저장됨 ✓" 위장 금지)
+  const doSave = async (
+    patch: Partial<Omit<OutreachEntry, "updated_at">>,
+    ops: { add?: Omit<CounselSession, "seq">; removeSeq?: number } | undefined,
+    okMsg: string
+  ): Promise<OutreachSaveResult> => {
+    setSaving(true);
+    const { all, result } = await saveOutreachEntry(studentId, patch, by, ops);
+    setSaving(false);
+    onSave(all);
+    if (result === "FAIL")
+      flash("⚠ 공유 저장소 반영 실패 — 이 브라우저에는 보관됐지만 다른 상담사에게 공유되지 않았습니다. 네트워크 확인 후 같은 내용을 다시 저장해 주세요.", true);
+    else flash(`${okMsg} ✓`);
+    return result;
   };
 
   const refAgencies = agencies.filter((a) => a.type === "AGENCY");
   const employers = agencies.filter((a) => a.type === "EMPLOYER");
   const selectedAgency = agencies.find((a) => a.id === refAgency);
 
-  const saveContact = () => {
-    onSave(saveOutreachEntry(studentId, { status, memo }, by));
-    flash("연락 기록 저장됨 ✓");
-  };
+  const saveContact = () => void doSave({ status, memo }, undefined, "연락 기록 저장됨");
   const addSession = () => {
     if (!sessContent.trim()) return;
-    const next: CounselSession = { seq: sessions.length + 1, date: sessDate, content: sessContent.trim(), by };
-    onSave(saveOutreachEntry(studentId, { sessions: [...sessions, next] }, by));
+    // 회차 번호는 저장 시점의 "원격 최신 배열" 기준으로 부여(cloudStore 병합) — 동시 편집 시 중복·소실 방지
+    void doSave({}, { add: { date: sessDate, content: sessContent.trim(), by } }, "회차 기록 저장됨");
     setSessContent("");
-    flash(`${next.seq}회차 기록 저장됨 ✓`);
   };
   const removeSession = (seq: number) => {
     if (!window.confirm(`${seq}회차 기록을 삭제할까요?`)) return;
-    const next = sessions.filter((s) => s.seq !== seq).map((s, i) => ({ ...s, seq: i + 1 }));
-    onSave(saveOutreachEntry(studentId, { sessions: next }, by));
+    void doSave({}, { removeSeq: seq }, "회차 기록 삭제됨");
   };
-  const saveSummary = () => {
-    onSave(saveOutreachEntry(studentId, { final_summary: finalSummary }, by));
-    flash("최종 요약 저장됨 ✓");
-  };
+  const saveSummary = () => void doSave({ final_summary: finalSummary }, undefined, "최종 요약 저장됨");
   const saveReferral = () => {
-    onSave(
-      saveOutreachEntry(
-        studentId,
-        {
-          referral: {
-            stage: refStage,
-            agency_id: refAgency || undefined,
-            referred_at: refDate || undefined,
-            note: refNote || undefined,
-          },
+    // 연계 완료 이후 단계는 기관 없이 저장하면 "기관 미상 연계"가 됨 — 등록부 선택 필수 (감사 C4-15)
+    if (["REFERRED", "FOLLOWUP", "CLOSED"].includes(refStage) && !refAgency)
+      return flash("⚠ 연계 기관을 선택해 주세요 — 연계 완료 이후 단계는 기관 기록이 필요합니다.", true);
+    void doSave(
+      {
+        referral: {
+          stage: refStage,
+          agency_id: refAgency || undefined,
+          referred_at: refDate || undefined,
+          note: refNote || undefined,
         },
-        by
-      )
+      },
+      undefined,
+      "외부 연계 저장됨"
     );
-    flash("외부 연계 저장됨 ✓");
   };
-  const saveEmployment = () => {
-    onSave(
-      saveOutreachEntry(
-        studentId,
-        {
-          employment: {
-            status: empStatus,
-            employer: employer || undefined,
-            date: empDate || undefined,
-            note: empNote || undefined,
-          },
+  const saveEmployment = () =>
+    void doSave(
+      {
+        employment: {
+          status: empStatus,
+          employer: employer || undefined,
+          date: empDate || undefined,
+          note: empNote || undefined,
         },
-        by
-      )
+      },
+      undefined,
+      "취업상태 저장됨"
     );
-    flash("취업상태 저장됨 ✓");
-  };
 
   return (
     <div className="counsel-record">
@@ -148,7 +155,11 @@ export default function CounselRecord({
         <span className="sum-badge sum-badge--plain">상담 {sessions.length}회</span>
         {entry?.memo && <span className="counsel-summary__memo">📝 {entry.memo}</span>}
       </div>
-      {savedMsg && <p className="outreach-editor__saved counsel-record__flash">{savedMsg}</p>}
+      {savedMsg && (
+        <p className={`outreach-editor__saved counsel-record__flash ${savedMsg.error ? "counsel-record__flash--err" : ""}`}>
+          {savedMsg.text}
+        </p>
+      )}
 
       {/* ② 연락 기록 */}
       <div className="outreach-editor">
@@ -180,7 +191,7 @@ export default function CounselRecord({
               ? `마지막 기록: ${entry.updated_at.slice(0, 16).replace("T", " ")} · ${entry.by}`
               : "아직 기록이 없습니다."}
           </span>
-          <button className="btn btn--primary btn--sm" onClick={saveContact}>연락 기록 저장</button>
+          <button className="btn btn--primary btn--sm" disabled={saving} onClick={saveContact}>연락 기록 저장</button>
         </div>
       </div>
 
@@ -212,7 +223,7 @@ export default function CounselRecord({
             onChange={(e) => setSessContent(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addSession(); }}
           />
-          <button className="btn btn--primary btn--sm" disabled={!sessContent.trim()} onClick={addSession}>
+          <button className="btn btn--primary btn--sm" disabled={!sessContent.trim() || saving} onClick={addSession}>
             회차 추가
           </button>
         </div>
@@ -225,7 +236,7 @@ export default function CounselRecord({
         />
         <div className="outreach-editor__foot">
           <span className="muted small">최종 요약은 명단·인수인계에서 이 학생의 결론으로 쓰입니다.</span>
-          <button className="btn btn--ghost btn--sm" onClick={saveSummary}>최종 요약 저장</button>
+          <button className="btn btn--ghost btn--sm" disabled={saving} onClick={saveSummary}>최종 요약 저장</button>
         </div>
       </div>
 
@@ -285,7 +296,7 @@ export default function CounselRecord({
         )}
         <div className="outreach-editor__foot">
           <span className="muted small">연계 완료·사후관리 학생은 명단의 🔗 사후관리 필터로 모아볼 수 있어요.</span>
-          <button className="btn btn--primary btn--sm" onClick={saveReferral}>외부 연계 저장</button>
+          <button className="btn btn--primary btn--sm" disabled={saving} onClick={saveReferral}>외부 연계 저장</button>
         </div>
       </div>
 
@@ -340,7 +351,7 @@ export default function CounselRecord({
         )}
         <div className="outreach-editor__foot">
           <span className="muted small">취업 확정 학생은 성과관리·사후 연락 대상에서 자동 제외 판단에 활용됩니다.</span>
-          <button className="btn btn--primary btn--sm" onClick={saveEmployment}>취업상태 저장</button>
+          <button className="btn btn--primary btn--sm" disabled={saving} onClick={saveEmployment}>취업상태 저장</button>
         </div>
       </div>
     </div>

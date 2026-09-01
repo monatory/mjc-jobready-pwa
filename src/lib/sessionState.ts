@@ -14,11 +14,12 @@ export interface StudentProfile {
 // 구버전 값 "1"~"3"(mock·기존 응답)은 gradeLabel이 "N학년"으로 표시해 하위 호환.
 export const GRADE_PATTERN = /^본과[1-3]$|^심화[12]$|^졸업(19|20)\d{2}$/;
 
-/** 학년 코드 → 표시 라벨: "본과1"→"본과 1학년", "졸업2024"→"졸업(2024)" */
+/** 학년 코드 → 표시 라벨: "본과1"→"본과정 1학년", "심화1"→"전공심화 1학년", "졸업2024"→"졸업(2024)" */
 export function gradeLabel(g: string | undefined): string {
   if (!g) return "—";
   if (g.startsWith("졸업")) return g.length > 2 ? `졸업(${g.slice(2)})` : "졸업";
-  if (/^(본과|심화)[0-9]$/.test(g)) return `${g.slice(0, 2)} ${g.slice(2)}학년`;
+  if (/^본과[0-9]$/.test(g)) return `본과정 ${g.slice(2)}학년`;
+  if (/^심화[0-9]$/.test(g)) return `전공심화 ${g.slice(2)}학년`;
   return `${g}학년`;
 }
 

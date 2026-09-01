@@ -10,7 +10,7 @@ import {
   sendPasswordResetEmail,
   signOut as fbSignOut,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, getDocs, collection } from "firebase/firestore";
 import { CLOUD_ENABLED, COL, getAuthInst, getDb, getSignupAuth, getSignupDb, authReady } from "../lib/firebase";
 
 // 역할 체계 (2026-08-30 사용자 확정 — "담당자는 상담사 페이지를 볼 수 없어야 한다"):
@@ -19,7 +19,9 @@ import { CLOUD_ENABLED, COL, getAuthInst, getDb, getSignupAuth, getSignupDb, aut
 //  COUNSELOR_LEAD  상담사 관리자 — 상담사 워크스페이스 + 상담사 계정 등록·관리
 //  COUNSELOR       상담사 — 상담사 워크스페이스(연락 관리 공유)
 export type AdminRole = "MASTER" | "ADMIN" | "COUNSELOR_LEAD" | "COUNSELOR";
-export type AccountStatus = "ACTIVE" | "PENDING" | "DISABLED";
+// DELETED: 클라우드 계정 삭제 tombstone — 문서를 지우면 Auth 사용자가 남아 재로그인 시
+// "고아 복구" 경로로 승인 대기에 계속 부활했다(감사 P3-12·C4-10). 삭제 표식을 남겨 차단한다.
+export type AccountStatus = "ACTIVE" | "PENDING" | "DISABLED" | "DELETED";
 
 export interface AdminAccount {
   id: string;          // 로그인 아이디 (클라우드 계정은 이메일)
@@ -59,6 +61,7 @@ export const STATUS_LABELS: Record<AccountStatus, string> = {
   ACTIVE: "사용 중",
   PENDING: "승인 대기",
   DISABLED: "비활성",
+  DELETED: "삭제됨",
 };
 
 // ── 권한 매트릭스 — 섹션 키 → 접근 가능한 역할 ──
@@ -157,9 +160,13 @@ export async function registerAccount(input: {
       const code = (e as { code?: string })?.code ?? "";
       if (code === "auth/email-already-in-use") return { ok: false, message: "이미 등록된 이메일입니다. 신청한 적이 있다면 로그인해 보세요 — 승인 대기 접수가 자동으로 복구됩니다." };
       if (code === "auth/invalid-email") return { ok: false, message: "이메일 형식을 확인해 주세요." };
-      if (!["auth/operation-not-allowed", "auth/network-request-failed", "auth/configuration-not-found"].includes(code))
+      // (2026-09-01 감사 P3-08) 네트워크 장애 시 로컬 폴백 금지 — 이 브라우저에만 존재하는 계정이
+      // 만들어져 마스터가 승인할 수 없고, 클라우드 복구 후에는 로그인도 안 되는 데드엔드였다.
+      if (code === "auth/network-request-failed")
+        return { ok: false, message: "네트워크 오류로 신청하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요." };
+      if (!["auth/operation-not-allowed", "auth/configuration-not-found"].includes(code))
         return { ok: false, message: "신청 처리에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-      // 프로바이더 미설정·네트워크 장애 → 로컬 등록으로 폴백
+      // 프로바이더 미설정(콘솔 설정 전)만 → 로컬 등록으로 폴백
     }
   }
 
@@ -210,9 +217,12 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
     uid = (await signInWithEmailAndPassword(auth, email, password)).user.uid;
   } catch (e) {
     const code = (e as { code?: string })?.code ?? "";
-    // 프로바이더 미설정·네트워크 장애 → 로컬 인증으로 폴백
-    if (["auth/operation-not-allowed", "auth/network-request-failed", "auth/configuration-not-found"].includes(code))
-      return null;
+    // (2026-09-01 감사 F11) 네트워크 장애는 로컬 폴백 금지 — Firebase 미인증 상태로 워크스페이스에
+    // 들어가 모든 공유(응답 조회·상담 기록)가 조용히 로컬 전용이 되던 경로 차단. 오류로 안내한다.
+    if (code === "auth/network-request-failed")
+      return { ok: false, message: "네트워크 오류로 로그인하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요." };
+    // 프로바이더 미설정(콘솔 설정 전)만 → 로컬 인증으로 폴백
+    if (["auth/operation-not-allowed", "auth/configuration-not-found"].includes(code)) return null;
     if (email === MASTER_ID && code === "auth/user-not-found")
       return { ok: false, message: "마스터 계정이 아직 없습니다 — Firebase 콘솔 Authentication에서 먼저 생성해 주세요 (SETUP 가이드 3단계)." };
     return { ok: false, message: "아이디 또는 비밀번호가 올바르지 않습니다." };
@@ -252,6 +262,11 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
     await fbSignOut(auth).catch(() => {});
     return { ok: false, message: "비활성화된 계정입니다. 마스터 관리자에게 문의해 주세요." };
   }
+  if (s.status === "DELETED") {
+    // 삭제 tombstone — 고아 복구로 승인 대기가 재생성되지 않게 명시 차단 (감사 P3-12·C4-10)
+    await fbSignOut(auth).catch(() => {});
+    return { ok: false, message: "삭제된 계정입니다. 다시 사용하려면 마스터 관리자에게 문의해 주세요." };
+  }
   return { ok: true, message: "", session: storeSession(email, s.name, s.role) };
 }
 
@@ -275,7 +290,18 @@ export function getSession(): AdminSession | null {
 
 export function logout(): void {
   sessionStorage.removeItem(SESSION_KEY);
-  if (CLOUD_ENABLED) fbSignOut(getAuthInst()).catch(() => {});
+  if (CLOUD_ENABLED) {
+    fbSignOut(getAuthInst()).catch(() => {});
+    // 공용 PC 보호 — 로그아웃 후 상담 메모·학생 학번이 localStorage에 평문으로 남아
+    // 비로그인 상태에서도 열람 가능하던 문제 수정 (감사 F15). 클라우드가 원본이므로
+    // 다음 로그인 시 pullShared가 다시 채운다. (공유 실패분은 저장 시점에 이미 경고됨)
+    try {
+      localStorage.removeItem("mjc_ready_outreach");
+      localStorage.removeItem("mjc_ready_agencies");
+    } catch {
+      /* 제거 실패는 치명적이지 않음 */
+    }
+  }
 }
 
 // ── 계정 관리 (마스터 전용 — 화면단에서 권한 확인 후 호출) ──
@@ -329,6 +355,7 @@ export async function loadStaffCloud(): Promise<AdminAccount[] | null> {
     const list: AdminAccount[] = [];
     snap.forEach((d) => {
       const s = d.data() as StaffDoc;
+      if (s.status === "DELETED") return; // 삭제 tombstone은 목록 비노출
       list.push({
         id: s.email,
         name: s.name,
@@ -347,29 +374,50 @@ export async function loadStaffCloud(): Promise<AdminAccount[] | null> {
   }
 }
 
-export async function approveStaffCloud(uid: string): Promise<void> {
-  await updateDoc(doc(getDb(), COL.staff, uid), {
-    status: "ACTIVE",
-    approved_at: new Date().toISOString(),
-  }).catch(() => {});
+// (2026-09-01 감사 P3-10·C4-12·F16) 계정 액션은 실패를 삼키지 않고 성공 여부를 반환하며,
+// 토글이 아니라 "명시적 목표 상태"를 기록한다 — 두 관리자가 동시에 처리해도 결과가 수렴한다.
+
+export async function approveStaffCloud(uid: string): Promise<boolean> {
+  try {
+    await updateDoc(doc(getDb(), COL.staff, uid), {
+      status: "ACTIVE",
+      approved_at: new Date().toISOString(),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export async function toggleStaffActiveCloud(uid: string, current: AccountStatus): Promise<void> {
-  await updateDoc(doc(getDb(), COL.staff, uid), {
-    status: current === "ACTIVE" ? "DISABLED" : "ACTIVE",
-  }).catch(() => {});
+/** 목표 상태(ACTIVE/DISABLED)를 명시적으로 기록 */
+export async function setStaffStatusCloud(uid: string, status: "ACTIVE" | "DISABLED"): Promise<boolean> {
+  try {
+    await updateDoc(doc(getDb(), COL.staff, uid), { status });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export async function toggleStaffLeadCloud(uid: string, current: AdminRole): Promise<void> {
-  if (current !== "COUNSELOR" && current !== "COUNSELOR_LEAD") return;
-  await updateDoc(doc(getDb(), COL.staff, uid), {
-    role: current === "COUNSELOR" ? "COUNSELOR_LEAD" : "COUNSELOR",
-  }).catch(() => {});
+/** 목표 역할(COUNSELOR/COUNSELOR_LEAD)을 명시적으로 기록 */
+export async function setStaffLeadCloud(uid: string, role: "COUNSELOR" | "COUNSELOR_LEAD"): Promise<boolean> {
+  try {
+    await updateDoc(doc(getDb(), COL.staff, uid), { role });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-/** 클라우드 계정 제거 — staff 문서 삭제로 로그인 차단 (Auth 사용자 삭제는 콘솔에서) */
-export async function removeStaffCloud(uid: string): Promise<void> {
-  await deleteDoc(doc(getDb(), COL.staff, uid)).catch(() => {});
+/** 클라우드 계정 제거 — 문서 삭제 대신 DELETED tombstone (감사 P3-12: Auth 사용자가 남아
+ *  재로그인 시 고아 복구로 부활하던 문제 차단). Auth 사용자 완전 삭제는 콘솔에서. */
+export async function removeStaffCloud(uid: string): Promise<boolean> {
+  try {
+    await updateDoc(doc(getDb(), COL.staff, uid), { status: "DELETED" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** 상담사 ↔ 상담사 관리자 역할 전환 (마스터 전용 — 화면단에서 권한 확인 후 호출) */

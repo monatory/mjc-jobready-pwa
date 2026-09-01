@@ -176,4 +176,47 @@ test("추천활동: 결정론 — 동일 조건 동일 순서", () => {
   assert.deepEqual(a, b);
 });
 
+// ── 경계·결측 보강 (2026-09-01 감사 ENG-12) ─────────────────────
+test("JAS = 70 (컷오프 동치) → Level 3 진입", () => {
+  // 취업(30)+천천히(10)+필요할때(8)+3개월(20)+무관심(0)+미희망(0) = 68 → +잘모름(5)-3? 조합:
+  // 취업(30)+바로(20)+알아서(0)+3개월(20)+무관심(0)+미희망(0) = 70
+  const s = {
+    career_direction: "EMPLOYMENT",
+    job_will: "START_NOW",
+    school_support: "ALONE",
+    employment_timing: "WITHIN_3M",
+    gov_link: "NO_INTEREST",
+    counsel_wish: "NO",
+  };
+  assert.equal(calcJas(s, data.surveyItems).score, 70);
+  assert.equal(evaluate(s, diagAll(3), data).level, 3);
+});
+
+test("결측 진단(빈 diag) — throw 없이 평가되고 결정론 유지 (현행 동작 고정)", () => {
+  // Read-Only 엔진(§2)은 결측을 조용히 0점 처리한다 — 유입 차단은 결과지 완주 가드 +
+  // rules validResponse(map 타입)가 담당. 여기서는 "동작이 변하지 않음"만 고정한다.
+  const a = evaluate(survey96, {}, data);
+  const b = evaluate(survey96, {}, data);
+  assert.deepEqual(a, b);
+  assert.ok([1, 2, 3, 4].includes(a.level));
+});
+
+test("추천활동: 활성기간 경계 당일(from·to)은 포함", () => {
+  const first = master.activities[0];
+  const atFrom = resolveRecommendations(first.levels[0], [], master, { today: first.active_from });
+  const atTo = resolveRecommendations(first.levels[0], [], master, { today: first.active_to });
+  assert.ok(atFrom.length > 0);
+  assert.ok(atTo.length > 0);
+});
+
+test("추천활동: ANY 병기 활동도 취약영역 직접 매칭 우선권 유지 (감사 ENG-08 회귀)", () => {
+  // 시드에서 EMP_CONSULT_JOBCAFE는 weak_domains에 JOB_READY와 ANY를 함께 가진다 —
+  // JOB_READY 취약 학생의 추천에서 직접 매칭(weak_match)으로 인정되어야 한다.
+  const weak = [{ domain: "JOB_READY", label: "구직준비", score: 2.5 }];
+  const recs = resolveRecommendations(3, weak, master, { today: "2026-10-01" });
+  const emp = recs.find((a) => a.recommendation_code === "EMP_CONSULT_JOBCAFE");
+  assert.ok(emp, "EMP_CONSULT_JOBCAFE가 추천 상위권에 있어야 함");
+  assert.equal(emp.weak_match, true);
+});
+
 console.log(`\n총 ${n}건 실행 — ${process.exitCode ? "실패 있음" : "전부 통과"}`);

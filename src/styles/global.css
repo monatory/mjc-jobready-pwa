@@ -785,7 +785,7 @@ body {
   font-size: 0.8rem;
 }
 
-/* 학년 과정 구분 선택 — 본과/심화/졸업 행 구성 (STEP 2 기본 정보) */
+/* 학년 과정 구분 선택 — 본과정/전공심화과정/졸업 행 구성 (STEP 2 기본 정보) */
 .grade-picker {
   display: flex;
   flex-direction: column;
@@ -798,7 +798,7 @@ body {
   flex-wrap: wrap;
 }
 .grade-picker__track {
-  min-width: 34px;
+  flex-basis: 100%; /* 과정명("본과정"·"전공심화과정"·"졸업")을 한 줄로 두고 칩을 그 아래에 배치 */
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--muted);
@@ -907,8 +907,15 @@ body {
   .grid-2 {
     grid-template-columns: 1fr;
   }
+  /* 좁은 화면에서도 척도 "방향"은 보여야 한다 — 라벨 전체를 숨기면 1점·5점의 의미 안내가
+     화면에 전무해 응답이 왜곡될 수 있다(감사 S2-06). 양끝 라벨만 유지, 가운데만 숨김. */
   .scale span {
     display: none;
+  }
+  .scale:first-child span,
+  .scale:last-child span {
+    display: block;
+    font-size: 0.6rem;
   }
   .stat-row {
     flex-wrap: wrap;
@@ -1248,6 +1255,22 @@ body {
   gap: 12px;
   align-items: flex-start;
 }
+/* 통합 다운로드 — 기본(주) 카드. 개별 시트는 아래 접힘 영역으로 이동 (2026-09-01) */
+.dl-card--main {
+  margin-bottom: 16px;
+}
+.dl-card--main p {
+  margin: 0;
+}
+.dl-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.dl-details[open] > summary {
+  margin-bottom: 8px;
+}
 .admin-detail {
   max-width: 780px;
   max-height: 86vh;
@@ -1554,6 +1577,11 @@ body {
 .counsel-record__flash {
   margin: 0;
   font-size: 0.82rem;
+}
+/* 공유 저장 실패 경고 — 성공 플래시와 확실히 구분 (감사 C4-02) */
+.counsel-record__flash--err {
+  color: #c0392b;
+  font-weight: 600;
 }
 .sum-badge {
   font-size: 0.75rem;

@@ -1,14 +1,16 @@
 // 대상자 필터·명단 패널 — 관리자(#/admin)와 상담사 워크스페이스(#/counsel) 공용.
 // showOutreach=true(상담사 전용)일 때만 연락 우선 큐·연락상태·상담 메모가 나타난다.
 // 담당자(행정)에게는 연락 기록이 화면·CSV 어디에도 노출되지 않는다 (2026-08-30 사용자 확정).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
 import { useStudents, inPeriod, updateStudentProfile } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
 import { domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
+import { localDateStr } from "../lib/dates";
 import type { AdminSession } from "./auth";
 import {
   loadOutreach,
+  onOutreachChange,
   statusOf,
   referralStageOf,
   employmentStatusOf,
@@ -26,8 +28,8 @@ import { gradeLabel, GRADE_PATTERN } from "../lib/sessionState";
 
 // 학생 정보 수정 폼의 학년 선택지 (졸업은 연도 입력 동반)
 const GRADE_OPTIONS: Array<[string, string]> = [
-  ["본과1", "본과 1학년"], ["본과2", "본과 2학년"], ["본과3", "본과 3학년"],
-  ["심화1", "심화 1학년"], ["심화2", "심화 2학년"], ["졸업", "졸업생"],
+  ["본과1", "본과정 1학년"], ["본과2", "본과정 2학년"], ["본과3", "본과정 3학년"],
+  ["심화1", "전공심화 1학년"], ["심화2", "전공심화 2학년"], ["졸업", "졸업생"],
 ];
 
 // ── 정렬 (2026-08-31 상담사 요구 — JAS 고정 정렬 → 선택형) ──
@@ -38,7 +40,10 @@ const CONTACT_PRIORITY = ["NONE", "NO_RESPONSE", "CONTACTED", "RESERVED", "DONE"
 const REFERRAL_PRIORITY = ["WANTED", "REFERRED", "FOLLOWUP", "CLOSED", "NONE"];
 
 export const LEVEL_NAMES: Record<number, string> = { 1: "진로탐색", 2: "진로설정", 3: "취업준비", 4: "실전취업" };
-const rules = levelRules as unknown as { jas_cutoff_level3: number };
+const rules = levelRules as unknown as {
+  jas_cutoff_level3: number;
+  gates: { timing_gate: { values: string[] } };
+};
 
 // 설문 정의에서 선택지 목록을 가져오는 헬퍼 (코드 하드코딩 금지 — §4)
 type Opt = { value: string; label: string };
@@ -111,7 +116,7 @@ const PRESETS: Array<{ key: string; label: string; fn: (s: StudentRecord) => boo
     fn: (s) =>
       s.survey.career_direction === "EMPLOYMENT" &&
       s.result.jas >= rules.jas_cutoff_level3 &&
-      ["WITHIN_3M", "WITHIN_6M"].includes(s.survey.employment_timing),
+      rules.gates.timing_gate.values.includes(s.survey.employment_timing), // level_rules 주입 (§4)
   },
   { key: "employment", label: "취업희망", fn: (s) => s.survey.career_direction === "EMPLOYMENT" },
   { key: "counsel", label: "상담희망", fn: (s) => s.survey.counsel_wish === "YES" },
@@ -141,6 +146,8 @@ export default function StudentsPanel({
   const [queueOnly, setQueueOnly] = useState(false);
   const [followupOnly, setFollowupOnly] = useState(false); // 🔗 외부연계 사후관리 큐
   const [outreach, setOutreach] = useState<Record<string, OutreachEntry>>(loadOutreach);
+  // 클라우드 동기화·다른 화면의 저장 후 최신 기록 반영 — 리마운트 없이 (감사 C4-07)
+  useEffect(() => onOutreachChange(() => setOutreach(loadOutreach())), []);
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const [deptFilter, setDeptFilter] = useState<string>("");
   const [search, setSearch] = useState("");
@@ -179,7 +186,10 @@ export default function StudentsPanel({
     if (!editForm.dept.trim()) return setEditMsg({ text: "학과를 입력해 주세요.", ok: false });
     if (!(GRADE_PATTERN.test(grade) || grade === s.grade))
       return setEditMsg({ text: "학년을 확인해 주세요. 졸업생은 졸업 연도 4자리가 필요합니다.", ok: false });
-    if (!/^01[0-9]-?\d{3,4}-?\d{4}$/.test(editForm.phone.trim()))
+    // 구버전 무연락처 응답은 전화 없이도 이름·학과 교정 가능 (감사 P3-09) — 새로 입력할 때만 형식 검사
+    const phoneInput = editForm.phone.trim();
+    if (phoneInput === "" && s.phone !== "") return setEditMsg({ text: "휴대전화를 비울 수 없습니다.", ok: false });
+    if (phoneInput !== "" && !/^01[0-9]-?\d{3,4}-?\d{4}$/.test(phoneInput))
       return setEditMsg({ text: "휴대전화는 010-0000-0000 형식으로 입력해 주세요.", ok: false });
 
     setEditBusy(true);
@@ -422,15 +432,19 @@ export default function StudentsPanel({
             {filtered.map((s) => {
               const st = statusOf(outreach, s.student_id);
               return (
-                <tr key={s.student_id} onClick={() => { setDetail(s); setEditing(false); setEditMsg(null); }}>
-                  <td className="small" title={s.completed_at}>{s.completed_at ? s.completed_at.slice(0, 10) : "—"}</td>
+                <tr key={`${s.semester || "s"}_${s.student_id}`} onClick={() => { setDetail(s); setEditing(false); setEditMsg(null); }}>
+                  <td className="small" title={s.completed_at}>{localDateStr(s.completed_at) || "—"}</td>
                   <td>{s.student_id}</td>
                   <td><strong>{s.name}</strong></td>
                   <td className="num">
-                    {/* 행 클릭(모달)과 분리 — 전화 걸기/복사용 */}
-                    <a href={`tel:${s.phone.replace(/-/g, "")}`} onClick={(e) => e.stopPropagation()}>
-                      {s.phone}
-                    </a>
+                    {/* 행 클릭(모달)과 분리 — 전화 걸기/복사용. 구버전 무연락처 응답은 "—" */}
+                    {s.phone ? (
+                      <a href={`tel:${s.phone.replace(/-/g, "")}`} onClick={(e) => e.stopPropagation()}>
+                        {s.phone}
+                      </a>
+                    ) : (
+                      <span className="muted small">—</span>
+                    )}
                   </td>
                   <td>{s.dept}</td>
                   <td>{gradeLabel(s.grade)}</td>
@@ -479,7 +493,7 @@ export default function StudentsPanel({
               <div>
                 <h3>{detail.name} <span className="muted">({detail.student_id} · {detail.dept} {gradeLabel(detail.grade)})</span></h3>
                 <p className="admin-detail__phone">
-                  📞 <a href={`tel:${detail.phone.replace(/-/g, "")}`}>{detail.phone}</a>
+                  📞 {detail.phone ? <a href={`tel:${detail.phone.replace(/-/g, "")}`}>{detail.phone}</a> : <span className="muted">연락처 없음</span>}
                   {!editing && (
                     <button
                       className="btn btn--ghost btn--sm profile-edit__open"

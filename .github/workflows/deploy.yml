@@ -1,9 +1,9 @@
 # MJC-READY 개발기 미리보기 배포 — main push 시 GitHub Pages 자동 배포.
 # 배포 URL: https://monatory.github.io/mjc-jobready-pwa/
 #
-# 시범 프로토타입 단계: 서버 전송 없음(입력값은 각자 브라우저 sessionStorage에만 저장)
-# → 공개 배포해도 개인정보 위험 없음 (CLAUDE.md §7.3, §9).
-# 실명 수집(Firestore 연동)은 Auth·Security Rules 강화 전까지 시작하지 않는다.
+# ⚠ 2026-08-30부터 클라우드 모드(Firestore 실명 수집) 가동 중 — "서버 전송 없음이라 공개 무해"
+# 전제는 더 이상 유효하지 않다. 개인정보 보호는 Firestore Security Rules + Auth가 담당하며,
+# 규칙 변경 시 반드시 콘솔 게시까지 완료할 것 (CLAUDE.md §7.2).
 
 name: Deploy to GitHub Pages
 
@@ -33,7 +33,9 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci || npm install
+        # npm install 폴백 금지 — lockfile 불일치를 조용히 우회해 로컬과 다른 의존성으로
+        # 빌드된 번들이 라이브에 올라가는 것을 차단 (감사 EXT-02)
+        run: npm ci
 
       - name: Validate data integrity (배점·참조 무결성 53건)
         run: npm run validate:data

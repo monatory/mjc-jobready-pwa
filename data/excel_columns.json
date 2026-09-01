@@ -45,6 +45,7 @@
     ],
     "03_자격증현황": [
       { "key": "student_id", "label": "학번" },
+      { "key": "semester", "label": "학기" },
       { "key": "cert_name", "label": "자격증명" },
       { "key": "category", "label": "분류" },
       { "key": "status", "label": "상태(보유/준비/목표)" },
@@ -64,6 +65,7 @@
     ],
     "05_추천활동": [
       { "key": "student_id", "label": "학번" },
+      { "key": "semester", "label": "학기" },
       { "key": "recommendation_code", "label": "추천코드" },
       { "key": "activity_name", "label": "활동명" },
       { "key": "owner", "label": "담당" },

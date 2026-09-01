@@ -4,7 +4,7 @@
 //  · 어떤 화면 링크에도 노출하지 않는다 — 상담사 계열 로그인 시에만 자동 진입.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useStudents } from "./responsesSource";
+import { useStudents, invalidateStudentsCache } from "./responsesSource";
 import { pullShared, type CloudState } from "./cloudStore";
 import { getSession, logout, canAccess, isCounselSide, homeRoute, ROLE_LABELS, type AdminSession } from "./auth";
 import AdminLogin from "./Login";
@@ -12,7 +12,7 @@ import Accounts from "./Accounts";
 import PasswordModal from "./PasswordModal";
 import StudentsPanel, { needsOutreachWith } from "./StudentsPanel";
 import AgencyManager from "./AgencyManager";
-import { loadOutreach, referralStageOf } from "./outreach";
+import { loadOutreach, onOutreachChange, referralStageOf } from "./outreach";
 
 type Section = "students" | "agencies" | "counselors";
 const SECTION_PERMS: Record<Section, string> = {
@@ -23,11 +23,14 @@ const SECTION_PERMS: Record<Section, string> = {
 
 export default function CounselDesk() {
   const navigate = useNavigate();
-  const { students, source } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
+  const { students, source, skipped } = useStudents(); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 C4-09)
   const [session, setSession] = useState<AdminSession | null>(getSession);
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("students");
   const [cloudState, setCloudState] = useState<CloudState>("LOCAL");
+  // 상담 기록 변경 통지 구독 — 저장·동기화 후 헤더 카운트가 즉시 갱신 (감사 C4-11)
+  const [outreachVersion, setOutreachVersion] = useState(0);
+  useEffect(() => onOutreachChange(() => setOutreachVersion((v) => v + 1)), []);
 
   // 담당자(행정)는 이 페이지를 볼 수 없다 — 관리자 화면으로 돌려보냄 (핵심 요구)
   useEffect(() => {
@@ -39,7 +42,7 @@ export default function CounselDesk() {
     if (session && isCounselSide(session.role)) void pullShared().then(setCloudState);
   }, [session]);
 
-  // 헤더에 보여줄 오늘의 업무량 (연락 대기 · 연계 사후관리)
+  // 헤더에 보여줄 오늘의 업무량 (연락 대기 · 연계 사후관리) — 기록 저장·동기화 시 즉시 재계산
   const { waitCount, followupCount } = useMemo(() => {
     const outreach = loadOutreach();
     return {
@@ -48,15 +51,16 @@ export default function CounselDesk() {
         ["REFERRED", "FOLLOWUP"].includes(referralStageOf(outreach, s.student_id))
       ).length,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section, students, cloudState]);
+  }, [students, outreachVersion]);
 
   if (!session)
     return (
       <AdminLogin
         onLogin={(s) => {
           setSession(s);
-          navigate(homeRoute(s.role), { replace: true });
+          // 상담사 계열(마스터 포함)은 지금 있는 워크스페이스에 그대로 — 마스터가 #/counsel에서
+          // 로그인했는데 #/admin으로 튕기던 문제 수정 (감사 C4-14). 담당자만 관리자 화면으로.
+          if (!isCounselSide(s.role)) navigate(homeRoute(s.role), { replace: true });
         }}
       />
     );
@@ -121,8 +125,10 @@ export default function CounselDesk() {
         <div className="admin__banner admin__banner--counsel">
           상담사 전용 공간 — 연락 기록·상담 메모는 이곳에서만 보이며, 담당자(행정) 화면과 일반 다운로드에는 포함되지 않습니다.{" "}
           {cloudState === "CLOUD"
-            ? `☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다.${source === "CLOUD" ? ` (실측 응답 ${students.length}건)` : ""}`
-            : "시범: 이 브라우저에만 저장 — Firebase 설정(docs/FIREBASE_SETUP.md) 후 상담사 간 공유로 전환됩니다."}
+            ? "☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다."
+            : "⚠ 공유 저장소 미연결(네트워크·권한·설정 확인) — 지금 저장하는 기록은 이 브라우저에만 보관되며 다른 상담사에게 공유되지 않습니다."}{" "}
+          {source === "CLOUD" && `(실측 응답 ${students.length}건${skipped ? ` · 형식 오류 제외 ${skipped}건` : ""})`}
+          {source === "ERROR" && "⚠ 학생 응답 조회 실패 — 명단이 비어 보이면 아래 새로고침을 누르거나 네트워크·로그인 상태를 확인하세요."}
         </div>
 
         {section === "students" && (
@@ -130,9 +136,18 @@ export default function CounselDesk() {
             <h1 className="admin__title">
               연락·상담 관리{" "}
               <span className="muted small">연락 대기 {waitCount}명 · 연계 사후관리 {followupCount}명</span>
+              <button
+                className="btn btn--ghost btn--sm"
+                title="학생 응답·공유 기록을 다시 불러옵니다"
+                onClick={() => {
+                  invalidateStudentsCache();
+                  void pullShared().then(setCloudState);
+                }}
+              >
+                ↻ 새로고침
+              </button>
             </h1>
-            {/* key=cloudState — 공유 저장소 동기화 완료 시 리마운트해 최신 기록 반영 */}
-            <StudentsPanel key={cloudState} session={session} showOutreach={true} />
+            <StudentsPanel session={session} showOutreach={true} />
           </>
         )}
 

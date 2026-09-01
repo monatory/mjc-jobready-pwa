@@ -72,6 +72,17 @@ export const EMPLOYMENT_ORDER: EmploymentStatus[] = ["NONE", "SEEKING", "EMPLOYE
 
 const KEY = "mjc_ready_outreach";
 
+// ── 변경 통지 — 저장·클라우드 동기화 후 열려 있는 화면(명단·헤더 카운트)이 리마운트 없이
+//    최신 기록을 다시 읽게 한다. 리마운트 방식은 입력 중이던 상담 카드를 날렸다(감사 C4-07). ──
+const changeListeners = new Set<() => void>();
+export function onOutreachChange(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+export function notifyOutreachChanged(): void {
+  changeListeners.forEach((l) => l());
+}
+
 export function loadOutreach(): Record<string, OutreachEntry> {
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, OutreachEntry>;
@@ -80,23 +91,48 @@ export function loadOutreach(): Record<string, OutreachEntry> {
   }
 }
 
-/** 학생 기록 부분 갱신(merge) — 처리자·일시 자동 기록 */
-export function saveOutreachEntry(
+/** 공유 저장 결과 — cloudStore.PushResult 재노출 (OK: 공유됨 / LOCAL: 로컬 모드 / FAIL: 공유 실패) */
+export type OutreachSaveResult = "OK" | "FAIL" | "LOCAL";
+
+/** 학생 기록 부분 갱신 — 처리자·일시 자동 기록.
+ *  (2026-09-01 동시성 수정 — 감사 F01·C4-02) 클라우드 모드에서는 Firestore 트랜잭션으로
+ *  "원격 최신 문서"에 변경 필드만 병합해 저장한다 — 다른 상담사가 방금 저장한 회차·연계 기록을
+ *  내 로컬 스냅샷이 덮어쓰는 경로 차단. 회차 추가·삭제는 ops로 전달(배열 통째 교체 금지).
+ *  결과를 반환하므로 호출 화면은 FAIL을 반드시 사용자에게 표시할 것. */
+export async function saveOutreachEntry(
   studentId: string,
   patch: Partial<Omit<OutreachEntry, "updated_at">>,
-  by: string
-): Record<string, OutreachEntry> {
+  by: string,
+  ops?: { add?: Omit<CounselSession, "seq">; removeSeq?: number }
+): Promise<{ all: Record<string, OutreachEntry>; result: OutreachSaveResult }> {
   const all = loadOutreach();
   const prev = all[studentId] ?? { status: "NONE" as OutreachStatus, memo: "", updated_at: "", by: "" };
-  all[studentId] = { ...prev, ...patch, updated_at: new Date().toISOString(), by };
+  const stamped = { ...patch, updated_at: new Date().toISOString(), by } as Partial<OutreachEntry>;
+  // 순환 import 방지 위해 동적 import
+  const m = await import("./cloudStore");
+  const { result, entry } = await m.pushOutreachMerged(studentId, stamped, ops, prev);
+  all[studentId] = entry; // 병합 결과(원격 최신 기반)를 로컬 캐시·화면에 반영
   try {
     localStorage.setItem(KEY, JSON.stringify(all));
   } catch {
-    /* 프로토타입: 저장 실패는 치명적이지 않음 */
+    /* localStorage 실패 — 클라우드 반영 결과(result)가 진실 */
   }
-  // 클라우드 공유 저장소에도 반영 (설정 전에는 no-op) — 순환 import 방지 위해 동적 import
-  void import("./cloudStore").then((m) => m.pushOutreach(studentId, all[studentId]));
-  return all;
+  notifyOutreachChanged();
+  return { all, result };
+}
+
+/** 학번 교정 시 로컬 캐시의 상담 기록 키 이동 (감사 F05 — 클라우드 이동은 responsesSource에서) */
+export function moveOutreachLocal(oldId: string, newId: string): void {
+  const all = loadOutreach();
+  if (!all[oldId]) return;
+  if (!all[newId]) all[newId] = all[oldId];
+  delete all[oldId];
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all));
+  } catch {
+    /* 캐시 이동 실패는 다음 pull에서 복구 */
+  }
+  notifyOutreachChanged();
 }
 
 export function statusOf(all: Record<string, OutreachEntry>, studentId: string): OutreachStatus {

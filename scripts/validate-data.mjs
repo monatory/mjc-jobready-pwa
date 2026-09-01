@@ -117,5 +117,46 @@ console.log("[5] 결과 템플릿·Excel 정의");
   check("03_자격증현황 Long Format 필수 컬럼", ["student_id", "cert_name", "status"].every((k) => excel.sheets["03_자격증현황"]?.some((c) => c.key === k)));
 }
 
+console.log("[6] 무결성 보강 (2026-09-01 감사 ENG-11)");
+{
+  // 비점수 항목 선택값·라벨 중복 — 중복 값은 응답 저장·라벨 변환을 오염시킨다
+  for (const [key, item] of Object.entries(survey.unscored_items)) {
+    if (!item.options) continue;
+    const values = item.options.map((o) => o.value);
+    check(`unscored ${key} 선택값 중복 없음`, new Set(values).size === values.length);
+  }
+  // visible_if 참조 무결성 — 참조 항목·값이 실제로 존재해야 조건부 노출이 동작
+  const allItems = { ...survey.scored_items, ...survey.unscored_items };
+  const badVisible = Object.entries(survey.unscored_items)
+    .filter(([, item]) => item.visible_if)
+    .filter(([, item]) => {
+      const target = allItems[item.visible_if.item];
+      return !target || !target.options?.some((o) => o.value === item.visible_if.value);
+    })
+    .map(([k]) => k);
+  check("visible_if 참조 무결성 (항목·값 존재)", badVisible.length === 0, badVisible.join(","));
+  // multi(복수 선택) 항목 값에 콤마 금지 — 콤마 결합 저장 형식과 충돌
+  const badMulti = Object.entries(survey.unscored_items)
+    .filter(([, item]) => item.multi && item.options)
+    .filter(([, item]) => item.options.some((o) => o.value.includes(",")))
+    .map(([k]) => k);
+  check("multi 항목 선택값에 콤마 없음", badMulti.length === 0, badMulti.join(","));
+  // 추천활동 활성기간 역전 금지
+  check(
+    "추천활동 활성기간 from ≤ to",
+    master.activities.every((a) => a.active_from <= a.active_to)
+  );
+  // level1_fallback 참조 도메인 존재
+  check(
+    "level1_fallback self_domain이 진단 domains에 존재",
+    !rules.level1_fallback || !!bank.domains[rules.level1_fallback.self_domain]
+  );
+  // 진단 척도 값 1~5 연속
+  check(
+    "진단 척도 1~5 정의",
+    Array.isArray(bank.scale) && [1, 2, 3, 4, 5].every((v) => bank.scale.some((s) => s.value === v))
+  );
+}
+
 console.log(`\n검증 완료: 통과 ${pass}건 / 실패 ${fail}건`);
 if (fail > 0) process.exit(1);

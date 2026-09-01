@@ -4,11 +4,20 @@
 // 시범: mock 40명(실제 엔진 판정)을 미리보기 모드로 표시. Firestore 연동 시 데이터 소스만 교체.
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useStudents, inPeriod } from "./responsesSource";
-import { exportSheet, exportSheetForResearch, sheetKeys } from "./csvExport";
+import { useStudents, inPeriod, invalidateStudentsCache } from "./responsesSource";
+import {
+  exportSheet,
+  exportSheetForResearch,
+  exportIntegrated,
+  exportIntegratedForResearch,
+  sheetKeys,
+} from "./csvExport";
 import { recommendationMaster, domainLabels, levelRules } from "../lib/dataLoader";
 
-const rules = levelRules as unknown as { jas_cutoff_level3: number };
+const rules = levelRules as unknown as {
+  jas_cutoff_level3: number;
+  gates: { timing_gate: { values: string[] } };
+};
 import { getSession, logout, canAccess, isCounselSide, homeRoute, ROLE_LABELS, type AdminSession } from "./auth";
 import AdminLogin from "./Login";
 import Accounts from "./Accounts";
@@ -19,7 +28,7 @@ type Section = "overview" | "students" | "recommend" | "download" | "accounts";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { students, source } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
+  const { students, source, skipped } = useStudents(); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 P3-04)
   const [session, setSession] = useState<AdminSession | null>(getSession);
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
@@ -50,7 +59,7 @@ export default function Dashboard() {
       (s) =>
         s.survey.career_direction === "EMPLOYMENT" &&
         s.result.jas >= rules.jas_cutoff_level3 &&
-        ["WITHIN_3M", "WITHIN_6M"].includes(s.survey.employment_timing)
+        rules.gates.timing_gate.values.includes(s.survey.employment_timing) // level_rules 주입 — 중복 하드코딩 제거 (감사 P3-13)
     ).length;
     const counsel = periodStudents.filter((s) => s.survey.counsel_wish === "YES").length;
     const nonEmp = periodStudents.filter((s) => s.result.routeTag === "FURTHER_STUDY_STARTUP").length;
@@ -175,11 +184,18 @@ export default function Dashboard() {
 
       <main className="admin__main">
         <div className="admin__banner">
-          {source === "CLOUD"
-            ? `실측 데이터 — Firebase에 저장된 학생 응답 ${students.length}건을 표시 중입니다.`
-            : source === "LOADING"
-              ? "데이터 불러오는 중… (공유 저장소 조회)"
-              : `미리보기 모드 — 가상 학생 ${students.length}명(실제 판정엔진 통과)으로 표시 중. Firebase 설정 후 실측 데이터로 자동 전환됩니다.`}
+          {source === "CLOUD" &&
+            `실측 데이터 — Firebase에 저장된 학생 응답 ${students.length}건을 표시 중입니다.${skipped ? ` (형식 오류로 제외 ${skipped}건 — 마스터에게 문의)` : ""}`}
+          {source === "LOADING" && "데이터 불러오는 중… (공유 저장소 조회)"}
+          {source === "ERROR" &&
+            "⚠ 학생 응답 조회 실패 — 네트워크·로그인·규칙 게시 상태를 확인한 뒤 새로고침해 주세요. (실측 데이터가 있어도 지금은 표시되지 않습니다)"}
+          {source === "MOCK" &&
+            `미리보기 모드 — 가상 학생 ${students.length}명(실제 판정엔진 통과)으로 표시 중. Firebase 설정 후 실측 데이터로 자동 전환됩니다.`}
+          {source !== "LOADING" && (
+            <button className="btn btn--ghost btn--sm" style={{ marginLeft: 8 }} onClick={() => invalidateStudentsCache()}>
+              ↻ 새로고침
+            </button>
+          )}
         </div>
 
         {section === "overview" && (
@@ -292,8 +308,7 @@ export default function Dashboard() {
           <>
             <h1 className="admin__title">데이터 다운로드</h1>
             <p className="muted">
-              계획서 §6-2의 5개 Sheet 정의(data/excel_columns.json)대로 원자료를 추출합니다. UTF-8 BOM — Excel 한글 호환.
-              시범은 Sheet별 CSV, 본 구현 시 xlsx 다중 시트 1파일로 통합(제안 12건-⑥).
+              전체 항목을 <strong>시트 하나(1 학생 = 1행)</strong>로 통합해 한 번에 내려받습니다. UTF-8 BOM — Excel 한글 호환.
               아래 <strong>집계 기간</strong>을 설정하면 해당 기간에 검사를 실시한 학생만 추출됩니다 (비우면 전체).
             </p>
             {periodBar}
@@ -302,19 +317,39 @@ export default function Dashboard() {
               <strong> 연구용(익명)</strong>은 학번을 익명 일련번호(R001…)로 치환하고 성명을 제거한 추출본 —
               교내 연구 제공은 반드시 이 파일만 사용합니다.
             </p>
-            <div className="dl-grid">
-              {sheetKeys.map((k) => (
-                <div className="card dl-card" key={k}>
-                  <strong>{k}</strong>
-                  <button className="btn btn--primary" onClick={() => exportSheet(k, periodStudents)}>
-                    운영용 CSV (실명)
-                  </button>
-                  <button className="btn btn--ghost" onClick={() => exportSheetForResearch(k, periodStudents)}>
-                    연구용 CSV (익명)
-                  </button>
-                </div>
-              ))}
+            <div className="card dl-card dl-card--main">
+              <strong>통합 다운로드 (시트 1개)</strong>
+              <p className="muted">
+                기본 정보·설문 전체 응답·3대 지표·Level·진단 영역점수·보완영역·자격증(상태별 요약)·추천활동을
+                학생 1명당 1행으로 담은 단일 시트입니다.
+              </p>
+              <button className="btn btn--primary" onClick={() => exportIntegrated(periodStudents)}>
+                통합 CSV (실명)
+              </button>
+              <button className="btn btn--ghost" onClick={() => exportIntegratedForResearch(periodStudents)}>
+                통합 CSV (연구용 익명)
+              </button>
             </div>
+            <details className="dl-details">
+              <summary>개별 시트 다운로드 (원자료 Long Format — 통계분석용)</summary>
+              <p className="muted">
+                계획서 §6-2의 5개 Sheet 정의(data/excel_columns.json)대로 시트별 원자료를 따로 추출합니다.
+                자격증·설문·진단 원자료는 1건=1행(Long Format)이라 통계분석에 적합합니다.
+              </p>
+              <div className="dl-grid">
+                {sheetKeys.map((k) => (
+                  <div className="card dl-card" key={k}>
+                    <strong>{k}</strong>
+                    <button className="btn btn--primary" onClick={() => exportSheet(k, periodStudents)}>
+                      운영용 CSV (실명)
+                    </button>
+                    <button className="btn btn--ghost" onClick={() => exportSheetForResearch(k, periodStudents)}>
+                      연구용 CSV (익명)
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </details>
           </>
         )}
 

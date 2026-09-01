@@ -1,5 +1,5 @@
 // STEP 3 — 보조 진단 27문항 (5점 척도, 화면당 1문항 자동 진행)
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { diagItems, diagScale, domainLabels } from "../lib/dataLoader";
@@ -24,12 +24,29 @@ export default function Diagnostic() {
   const answeredCount = diagItems.filter((it) => answers[it.id]).length;
   const allDone = answeredCount === diagItems.length;
 
+  // 자동 진행 타이머 — 학생이 "이전/다음"을 눌러 이동하면 취소한다.
+  // 취소 없이는 검토하러 돌아간 화면을 350ms 뒤 타이머가 강제로 앞으로 밀었다 (감사 S2-08)
+  const autoTimer = useRef<number | null>(null);
+  const cancelAuto = () => {
+    if (autoTimer.current != null) {
+      window.clearTimeout(autoTimer.current);
+      autoTimer.current = null;
+    }
+  };
+  useEffect(() => cancelAuto, []); // 언마운트 시 잔여 타이머 정리
+  const goto = (i: number) => {
+    cancelAuto();
+    setCursor(i);
+  };
+
   const pick = (value: number) => {
     const next = { ...answers, [q.id]: value };
     setAnswers(next);
     setDiag(next);
     // 350ms 후 다음 미응답 문항으로 자동 진행 (MJC-CAT 패턴)
-    window.setTimeout(() => {
+    cancelAuto();
+    autoTimer.current = window.setTimeout(() => {
+      autoTimer.current = null;
       const nextIdx = diagItems.findIndex((it, i) => i > cursor && !next[it.id]);
       const fallback = diagItems.findIndex((it) => !next[it.id]);
       if (nextIdx !== -1) setCursor(nextIdx);
@@ -79,24 +96,18 @@ export default function Diagnostic() {
         </section>
 
         <div className="actions">
-          <button
-            className="btn btn--ghost"
-            disabled={cursor === 0}
-            onClick={() => setCursor((c) => Math.max(0, c - 1))}
-          >
+          <button className="btn btn--ghost" disabled={cursor === 0} onClick={() => goto(Math.max(0, cursor - 1))}>
             ← 이전 문항
           </button>
-          {allDone ? (
+          {/* 완료 후에도 마지막 문항이 아니면 앞으로 이동 가능 — 검토하러 돌아갔다가 갇히던 문제 수정 (감사 S2-07) */}
+          {cursor < diagItems.length - 1 && (
+            <button className="btn btn--ghost" onClick={() => goto(Math.min(diagItems.length - 1, cursor + 1))}>
+              다음 문항 →
+            </button>
+          )}
+          {allDone && (
             <button className="btn btn--primary btn--glow" onClick={submit}>
               진단 완료 · 결과 보기 →
-            </button>
-          ) : (
-            <button
-              className="btn btn--ghost"
-              disabled={cursor >= diagItems.length - 1}
-              onClick={() => setCursor((c) => Math.min(diagItems.length - 1, c + 1))}
-            >
-              다음 문항 →
             </button>
           )}
         </div>

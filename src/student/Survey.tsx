@@ -38,13 +38,28 @@ export default function Survey() {
   const [certs, setCertsState] = useState<CertEntry[]>(getCerts());
   const [showErrors, setShowErrors] = useState(false);
 
+  // 입력 즉시 세션 저장 — 새로고침·뒤로가기·"← 이전"으로 입력 전체가 소실되던 문제 수정 (감사 S2-05).
+  // 조건부 문항 정리·트림은 제출 시(submit) 최종본으로 한 번 더 저장한다.
+  useEffect(() => { setProfile(profile); }, [profile]);
+  useEffect(() => { setSurvey(answers); }, [answers]);
+  useEffect(() => { setUnscored(unscored); }, [unscored]);
+  useEffect(() => { setCerts(certs); }, [certs]);
+
   const requiredDone = useMemo(() => {
     // 휴대전화는 상담사가 먼저 연락하는 시스템의 핵심 채널 — 필수 (숫자 10~11자리)
     const phoneOk = /^01[0-9]-?\d{3,4}-?\d{4}$/.test(profile.phone.trim());
-    // 학년: 본과 1~3 / 심화 1~2 / 졸업(연도 4자리 필수) — sessionState.GRADE_PATTERN
-    const gradeOk = GRADE_PATTERN.test(profile.grade);
-    const profileOk =
-      profile.student_id.trim() && profile.name.trim() && profile.dept.trim() && gradeOk && phoneOk;
+    // 학번: 영숫자 4~20자 — 서버 규칙(firestore.rules validResponse)과 동일 조건.
+    // 불일치하면 전 과정을 마치고 제출만 영구 실패했다 (감사 S2-02·F12)
+    const idOk = /^[A-Za-z0-9]{4,20}$/.test(profile.student_id.trim());
+    const nameOk = profile.name.trim().length >= 1 && profile.name.trim().length <= 30;
+    // 학년: 본과정 1~3 / 전공심화 1~2 / 졸업(연도 4자리) — 졸업 연도는 현실 범위만 (감사 S2-10)
+    const gradYearOk = !profile.grade.startsWith("졸업") ||
+      (() => {
+        const y = Number(profile.grade.slice(2));
+        return y >= 2000 && y <= new Date().getFullYear() + 1;
+      })();
+    const gradeOk = GRADE_PATTERN.test(profile.grade) && gradYearOk;
+    const profileOk = idOk && nameOk && profile.dept.trim() && gradeOk && phoneOk;
     const surveyOk = scoredItemEntries.every(([key]) => answers[key]);
     return Boolean(profileOk && surveyOk);
   }, [profile, answers]);
@@ -66,7 +81,18 @@ export default function Survey() {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    setProfile(profile);
+    // 최종 저장본은 트림·전화 정규화 적용 — 문서키(트림 학번)와 payload의 불일치 방지 (감사 S2-04)
+    // 전화는 하이픈 형식으로 통일 — Excel에서 숫자로 읽혀 앞 0이 사라지는 손상 방지 (감사 P5-11)
+    const digits = profile.phone.replace(/\D/g, "");
+    const formattedPhone =
+      digits.length >= 10 ? `${digits.slice(0, 3)}-${digits.slice(3, -4)}-${digits.slice(-4)}` : profile.phone.trim();
+    setProfile({
+      ...profile,
+      student_id: profile.student_id.trim(),
+      name: profile.name.trim(),
+      dept: profile.dept.trim(),
+      phone: formattedPhone,
+    });
     setSurvey(answers);
     // 조건부 문항(visible_if)은 상위 응답 변경으로 노출 조건이 깨지면 저장에서 제외 — 원자료 오염 방지
     const cleanedUnscored = Object.fromEntries(
@@ -134,7 +160,7 @@ export default function Survey() {
       <AppHeader step={2} />
       <main className="container">
         {showErrors && !requiredDone && (
-          <div className="alert">필수 항목(기본 정보 5개, 설문 {scoredItemEntries.length}개)을 모두 입력해 주세요. 휴대전화는 010-0000-0000 형식으로, 졸업생은 졸업 연도 4자리를 입력해 주세요.</div>
+          <div className="alert">필수 항목(기본 정보 5개, 설문 {scoredItemEntries.length}개)을 모두 입력해 주세요. 학번은 공백 없이 숫자·영문 4~20자, 휴대전화는 010-0000-0000 형식으로, 졸업생은 졸업 연도 4자리를 입력해 주세요.</div>
         )}
 
         <section className="card">
@@ -173,10 +199,10 @@ export default function Survey() {
             </div>
             <div className="field">
               <label className="field__label">학년 (과정 구분)</label>
-              {/* 본과 1~3 / 전공심화 1~2 / 졸업생(연도 입력) — 2026-08-31 세분화 */}
+              {/* 본과정 1~3 / 전공심화과정 1~2 / 졸업생(연도 입력) — 코드값은 "본과N"·"심화N"·"졸업YYYY" 유지 */}
               <div className="grade-picker">
                 <div className="grade-picker__row">
-                  <span className="grade-picker__track">본과</span>
+                  <span className="grade-picker__track">본과정</span>
                   {["1", "2", "3"].map((n) => (
                     <button
                       key={n}
@@ -189,7 +215,7 @@ export default function Survey() {
                   ))}
                 </div>
                 <div className="grade-picker__row">
-                  <span className="grade-picker__track">심화</span>
+                  <span className="grade-picker__track">전공심화과정</span>
                   {["1", "2"].map((n) => (
                     <button
                       key={n}

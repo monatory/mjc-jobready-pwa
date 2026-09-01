@@ -15,8 +15,10 @@ import {
   recommendationMaster,
   resultTemplates,
   domainLabels,
+  diagItems,
 } from "../lib/dataLoader";
 import { getProfile, getSurvey, getDiag, clearAll } from "../lib/sessionState";
+import { todayStr } from "../lib/dates";
 
 const rules = levelRules as unknown as {
   jas_cutoff_level3: number;
@@ -64,7 +66,15 @@ export default function Result() {
   const survey = getSurvey();
   const diag = getDiag();
 
-  const hasData = Object.keys(survey).length > 0 && Object.keys(diag).length > 0;
+  // 진단은 "전 문항 완주"여야 결과 — 일부만 응답한 상태로 URL 직접 진입 시 불완전 판정이
+  // 정식 결과처럼 표시·제출되던 문제 수정 (감사 S2-03·ENG-07)
+  const diagDone = diagItems.every((it) => diag[it.id]);
+  const hasData = Object.keys(survey).length > 0 && diagDone;
+  useEffect(() => {
+    // 진단이 진행 중(1개 이상 응답, 미완주)이면 결과 대신 진단 화면으로 복귀
+    if (!diagDone && Object.keys(diag).length > 0) navigate("/diagnostic", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diagDone]);
 
   const evalResult = useMemo(() => {
     if (!hasData) return null;
@@ -75,8 +85,17 @@ export default function Result() {
   // "제출 완료" 판단은 플래그가 아니라 제출 성공 당시의 응답 스냅샷(JSON) 비교 —
   // 응답을 수정하고 결과지에 다시 오면 자동으로 재제출된다. 키는 sessionState.KEYS.uploaded와 동일.
   const SUBMIT_KEY = "mjc_ready_uploaded";
+
+  // 보완영역·추천활동 — 결과 표시와 제출 스냅샷(추천 코드)이 같은 계산을 공유
+  const analysis = useMemo(() => {
+    if (!evalResult) return null;
+    const weak = findWeakAreas(evalResult.domainScores, diagnosticBank, rules.weak_area);
+    const recs = resolveRecommendations(evalResult.level, weak, recommendationMaster, { today: todayStr() });
+    return { weak, recs };
+  }, [evalResult]);
+
   const payload = useMemo<ResponsePayload | null>(() => {
-    if (!hasData || !evalResult || !profile) return null;
+    if (!hasData || !evalResult || !analysis || !profile) return null;
     return {
       profile,
       survey,
@@ -90,14 +109,23 @@ export default function Result() {
         level: evalResult.level,
         route_tag: evalResult.routeTag,
       },
+      // 결과 시점 추천 스냅샷 — 활성기간이 지나도 관리자 화면·CSV에서 유지 (감사 P3-11)
+      recommendations: analysis.recs.map((a) => a.recommendation_code),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasData, evalResult]);
+  }, [hasData, evalResult, analysis]);
   const serialized = useMemo(() => (payload ? JSON.stringify(payload) : ""), [payload]);
-  const [submitState, setSubmitState] = useState<"OFF" | "SAVING" | "DONE" | "FAIL">(CLOUD_ENABLED ? "SAVING" : "OFF");
+  const [submitState, setSubmitState] = useState<"OFF" | "SAVING" | "DONE" | "FAIL" | "NO_PROFILE">(
+    CLOUD_ENABLED ? "SAVING" : "OFF"
+  );
   const [retryTick, setRetryTick] = useState(0);
   useEffect(() => {
-    if (!payload || !CLOUD_ENABLED) return;
+    if (!CLOUD_ENABLED) return;
+    if (!payload) {
+      // 학생 정보(profile)가 유실된 채 결과만 남은 경우 — "제출 중…" 영구 표시 방지 (감사 S2-11)
+      if (hasData) setSubmitState("NO_PROFILE");
+      return;
+    }
     if (sessionStorage.getItem(SUBMIT_KEY) === serialized) {
       setSubmitState("DONE"); // 동일 내용은 이미 제출됨 — 재전송 생략
       return;
@@ -107,7 +135,11 @@ export default function Result() {
     void saveResponseToCloud(payload).then((outcome) => {
       if (cancelled) return;
       if (outcome === "OK") {
-        sessionStorage.setItem(SUBMIT_KEY, serialized);
+        try {
+          sessionStorage.setItem(SUBMIT_KEY, serialized);
+        } catch {
+          /* 스냅샷 기록 실패 — 다음 방문 시 재제출될 뿐 데이터 유실은 없음 */
+        }
         setSubmitState("DONE");
       } else {
         setSubmitState(outcome === "OFF" ? "OFF" : "FAIL");
@@ -142,10 +174,7 @@ export default function Result() {
     ? templates.route_overrides.FURTHER_STUDY_STARTUP
     : templates.levels[String(r.level)];
 
-  const weak = findWeakAreas(r.domainScores, diagnosticBank, rules.weak_area);
-  const recs = resolveRecommendations(r.level, weak, recommendationMaster, {
-    today: new Date().toISOString().slice(0, 10),
-  });
+  const { weak, recs } = analysis!; // hasData·evalResult 보장 구간
 
   return (
     <div className="page">
@@ -153,7 +182,7 @@ export default function Result() {
       <main className="container">
         {/* 인쇄 전용 머리글 — 화면 헤더는 인쇄에서 숨겨지므로 기관명·발급일을 별도 표기 */}
         <p className="print-head">
-          명지전문대학 학생지원처 취·창업팀 · MJC-READY 진로·취업 상태진단 결과지 (발급일 {new Date().toISOString().slice(0, 10)})
+          명지전문대학 학생지원처 취·창업팀 · MJC-READY 진로·취업 상태진단 결과지 (발급일 {todayStr()})
         </p>
         <section className={`card level-card level-card--l${r.level}`}>
           <p className="level-card__route">{isNonEmployment ? "진학·창업 Route" : "취업준비 Route"}</p>
@@ -242,7 +271,7 @@ export default function Result() {
             className="btn btn--primary btn--block"
             onClick={() =>
               window.alert(
-                "시범운영: 잡카페(학생회관)에 바로 방문하셔도 되고, 상담 희망으로 응답하신 경우 컨설턴트가 먼저 연락드립니다."
+                "시범운영: 잡카페(본관 1층)에 바로 방문하셔도 되고, 상담 희망으로 응답하신 경우 컨설턴트가 먼저 연락드립니다."
               )
             }
           >
@@ -260,6 +289,12 @@ export default function Result() {
             <button className="btn btn--primary" onClick={() => setRetryTick((t) => t + 1)}>
               다시 제출하기
             </button>
+          </section>
+        )}
+        {submitState === "NO_PROFILE" && (
+          <section className="card submit-fail">
+            <strong>⚠ 학생 정보가 없어 제출할 수 없습니다</strong>
+            <p>기본 정보(학번·성명)가 유실되었습니다. "다시 진단하기"로 처음부터 진행해 주세요.</p>
           </section>
         )}
 

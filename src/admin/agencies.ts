@@ -39,10 +39,17 @@ function save(list: Agency[]): Agency[] {
   return list;
 }
 
-// 클라우드 반영 헬퍼 (설정 전에는 no-op)
-const pushCloud = (a: Agency) => void import("./cloudStore").then((m) => m.pushAgency(a));
+export type AgencySaveResult = "OK" | "FAIL" | "LOCAL";
 
-export function addAgency(input: Omit<Agency, "id" | "created_at">): Agency[] {
+// 클라우드 반영 헬퍼 (설정 전에는 LOCAL) — 실패를 호출부에 반환 (감사 C4-12: 무통보 금지)
+async function pushCloud(a: Agency): Promise<AgencySaveResult> {
+  const m = await import("./cloudStore");
+  return m.pushAgency(a);
+}
+
+export async function addAgency(
+  input: Omit<Agency, "id" | "created_at">
+): Promise<{ list: Agency[]; result: AgencySaveResult }> {
   const list = loadAgencies();
   const agency: Agency = {
     ...input,
@@ -50,23 +57,29 @@ export function addAgency(input: Omit<Agency, "id" | "created_at">): Agency[] {
     created_at: new Date().toISOString(),
   };
   list.push(agency);
-  pushCloud(agency);
-  return save(list);
+  const result = await pushCloud(agency);
+  return { list: save(list), result };
 }
 
-export function updateAgency(id: string, patch: Partial<Omit<Agency, "id" | "created_at">>): Agency[] {
+export async function updateAgency(
+  id: string,
+  patch: Partial<Omit<Agency, "id" | "created_at">>
+): Promise<{ list: Agency[]; result: AgencySaveResult }> {
   const next = loadAgencies().map((a) => (a.id === id ? { ...a, ...patch } : a));
   const updated = next.find((a) => a.id === id);
-  if (updated) pushCloud(updated);
-  return save(next);
+  const result = updated ? await pushCloud(updated) : ("LOCAL" as AgencySaveResult);
+  return { list: save(next), result };
 }
 
-export function removeAgency(id: string): Agency[] {
-  void import("./cloudStore").then((m) => m.deleteAgencyCloud(id));
-  return save(loadAgencies().filter((a) => a.id !== id));
+/** 삭제 — 클라우드에는 tombstone 마킹으로 전파(감사 F14: 다른 상담사 캐시의 유령 기관 방지) */
+export async function removeAgency(id: string): Promise<{ list: Agency[]; result: AgencySaveResult }> {
+  const m = await import("./cloudStore");
+  const result = await m.deleteAgencyCloud(id);
+  return { list: save(loadAgencies().filter((a) => a.id !== id)), result };
 }
 
+/** 기관명 표시 — 등록부에서 삭제된 기관을 참조하는 과거 연계 기록은 "(삭제된 기관)"으로 표시 (감사 C4-08) */
 export function agencyName(list: Agency[], id: string | undefined): string {
   if (!id) return "";
-  return list.find((a) => a.id === id)?.name ?? "";
+  return list.find((a) => a.id === id)?.name ?? "(삭제된 기관)";
 }

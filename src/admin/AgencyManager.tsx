@@ -18,19 +18,30 @@ export default function AgencyManager() {
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"" | AgencyType>("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
 
   const visible = agencies.filter((a) => !typeFilter || a.type === typeFilter);
 
+  // 공유 반영 실패는 반드시 표시 — 다른 상담사에게 안 보이는 "유령 등록" 방지 (감사 C4-12)
+  const showResult = (result: "OK" | "FAIL" | "LOCAL", okMsg: string) => {
+    if (result === "FAIL")
+      setMsg({ text: "⚠ 공유 저장소 반영 실패 — 이 브라우저에만 저장됐습니다. 네트워크 확인 후 다시 시도해 주세요.", error: true });
+    else setMsg({ text: `${okMsg} ✓`, error: false });
+    window.setTimeout(() => setMsg(null), result === "FAIL" ? 5000 : 1500);
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
-    if (editId) {
-      setAgencies(updateAgency(editId, form));
+    if (!form.name.trim() || busy) return;
+    setBusy(true);
+    void (editId ? updateAgency(editId, form) : addAgency(form)).then(({ list, result }) => {
+      setBusy(false);
+      setAgencies(list);
+      showResult(result, editId ? "기관 정보 수정됨" : "기관 등록됨");
       setEditId(null);
-    } else {
-      setAgencies(addAgency(form));
-    }
-    setForm(EMPTY);
+      setForm(EMPTY);
+    });
   };
 
   const startEdit = (a: Agency) => {
@@ -84,10 +95,11 @@ export default function AgencyManager() {
               수정 취소
             </button>
           )}
-          <button className="btn btn--primary" disabled={!form.name.trim()}>
-            {editId ? "수정 저장" : "+ 기관 등록"}
+          <button className="btn btn--primary" disabled={!form.name.trim() || busy}>
+            {busy ? "저장 중…" : editId ? "수정 저장" : "+ 기관 등록"}
           </button>
         </div>
+        {msg && <p className={`profile-edit__msg ${msg.error ? "profile-edit__msg--err" : "profile-edit__msg--ok"}`}>{msg.text}</p>}
       </form>
 
       {/* 목록 */}
@@ -126,9 +138,15 @@ export default function AgencyManager() {
                     <button className="btn btn--ghost btn--sm" onClick={() => startEdit(a)}>수정</button>
                     <button
                       className="btn btn--ghost btn--sm"
+                      disabled={busy}
                       onClick={() => {
-                        if (window.confirm(`'${a.name}'을(를) 삭제할까요? 학생 기록의 연계 표시는 "미상 기관"으로 남습니다.`))
-                          setAgencies(removeAgency(a.id));
+                        if (!window.confirm(`'${a.name}'을(를) 삭제할까요? 학생 기록의 연계 표시는 "(삭제된 기관)"으로 남습니다.`)) return;
+                        setBusy(true);
+                        void removeAgency(a.id).then(({ list, result }) => {
+                          setBusy(false);
+                          setAgencies(list);
+                          showResult(result, "기관 삭제됨");
+                        });
                       }}
                     >
                       삭제
