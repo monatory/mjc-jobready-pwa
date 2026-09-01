@@ -198,6 +198,20 @@ export default function Survey() {
               />
             </div>
             <div className="field">
+              <label className="field__label" htmlFor="profile-phone">휴대전화</label>
+              <input
+                id="profile-phone"
+                className="input"
+                type="tel"
+                value={profile.phone}
+                inputMode="numeric"
+                placeholder="예: 010-1234-5678"
+                onChange={(e) => setProfileState({ ...profile, phone: e.target.value })}
+              />
+              <p className="field__hint">상담·프로그램 연계 시 잡카페 컨설턴트가 연락드리는 번호예요.</p>
+            </div>
+            {/* 학년은 3줄 블록이라 2열 짝에 두면 옆 칸에 큰 공백이 생김 — 전체 폭 행으로 분리 */}
+            <div className="field field--full">
               <label className="field__label">학년 (과정 구분)</label>
               {/* 본과정 1~3 / 전공심화과정 1~2 / 졸업생(연도 입력) — 코드값은 "본과N"·"심화N"·"졸업YYYY" 유지 */}
               <div className="grade-picker">
@@ -250,19 +264,6 @@ export default function Survey() {
                   )}
                 </div>
               </div>
-            </div>
-            <div className="field">
-              <label className="field__label" htmlFor="profile-phone">휴대전화</label>
-              <input
-                id="profile-phone"
-                className="input"
-                type="tel"
-                value={profile.phone}
-                inputMode="numeric"
-                placeholder="예: 010-1234-5678"
-                onChange={(e) => setProfileState({ ...profile, phone: e.target.value })}
-              />
-              <p className="field__hint">상담·프로그램 연계 시 잡카페 컨설턴트가 연락드리는 번호예요.</p>
             </div>
           </div>
         </section>

@@ -317,6 +317,9 @@ body {
   gap: 6px;
   margin-bottom: 10px;
 }
+.field--full {
+  grid-column: 1 / -1; /* 2열 그리드에서 전체 폭 차지 — 키 큰 블록(학년 과정 구분)이 옆 칸을 늘리지 않게 */
+}
 .field__label {
   font-size: 0.8rem;
   font-weight: 700;
@@ -798,7 +801,8 @@ body {
   flex-wrap: wrap;
 }
 .grade-picker__track {
-  flex-basis: 100%; /* 과정명("본과정"·"전공심화과정"·"졸업")을 한 줄로 두고 칩을 그 아래에 배치 */
+  /* 전체 폭 행(field--full)이 된 뒤로는 과정명을 칩과 같은 줄에 — 고정 폭으로 행 간 칩 시작점 정렬 */
+  flex: 0 0 92px;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--muted);
