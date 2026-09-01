@@ -207,7 +207,8 @@ v0.1 수치는 "가설"이지만, 보정은 **운영 거버넌스(전문가 검�
 | `lib/level_engine.js` | `calcJas` / `calcDomainScores` / `calcIndices` / `evaluate` — JAS·JRS·CDS 산출 + Gate 평가 + Level 판정 + 판정근거(reasons). **결정론** | ✅ 구현 (2026-08-27) |
 | `lib/recommendation_resolver.js` | `resolveRecommendations` — Master 필터(레벨·활성·기간) → 취약영역 매칭 우선 → priority → 코드순 정렬(결정론) 상위 3 | ✅ 구현 |
 | `lib/weak_area.js` | `findWeakAreas` — 기준선 3.5 미만 영역 낮은 순 최대 2개 | ✅ 구현 |
-| `lib/excel_export.js` (또는 src/admin) | 5개 Sheet 원자료 추출 — §6.3 | ⏳ STEP 5 |
+| `src/admin/csvExport.ts` | 통합 CSV(1 학생=1행) + 5개 Sheet 원자료 추출, 운영(실명)/연구(익명) 2종 — §6.3 | ✅ 구현 |
+| `src/lib/recoMaster.ts` | 추천활동 Master 저장소 — 시드 JSON + Firestore 오버라이드 병합, 형태 검증·tombstone(archived)·편집 충돌 감지 | ✅ 구현 (2026-09-01~02) |
 | `scripts/validate-data.mjs` | 데이터 무결성 검증 **53건** (배점 합계 100·Gate/신호/action_code 참조·템플릿·Excel 정의). CI 게이트 예정 | ✅ 구현 |
 | `tests/test_level_engine.js` | 회귀 **15건** — JAS 96 예시, L3/L4 분기, 경계값 68/73, timing Gate, 비취업 Route, 결정론, 보완영역·추천 연계 | ✅ 전부 통과 |
 
@@ -292,21 +293,24 @@ v0.1 배점 구조상 취업 방향 학생의 최저 Level은 2가 되며, 이�
 
 ## 7. Firestore 데이터 모델 + 개인정보·보안
 
-### 7.1 Collection 설계 (8종)
+### 7.1 Collection 설계 — **실제 구현 5종** (`src/lib/firebase.ts` COL)
 
-| Collection | 핵심 저장정보 |
-|---|---|
-| `students` | 학생 기본정보(학번·성명), 학과, 학년, 권한·식별정보 |
-| `surveyResponses` | 학기별 기본 설문 원응답, JAS 산출값, 수정이력 |
-| `certifications` | 학생별 자격증 단위 레코드 (보유/준비/목표) |
-| `diagnosticTests` | 문항, DNA 속성, 배점·Gate 규칙, 버전 |
-| `diagnosticResults` | 문항응답, 영역점수, JRS/CDS, Level, 판정근거 |
-| `recommendationMaster` | 추천코드, 적용단계·영역, 담당, 설명, 기간, 우선순위 |
-| `studentRecommendations` | 학생 결과시점에 적용된 추천활동 **스냅샷** |
-| `adminSettings` | 학기, 기준점, 활성버전, 관리자 설정 |
+계획안 v0.1은 8종(students/surveyResponses/certifications/diagnosticTests/diagnosticResults/
+recommendationMaster/studentRecommendations/adminSettings)으로 설계했으나, 구현에서 **학생 1인 1문서에
+설문·자격증·진단·판정·추천 스냅샷을 함께 담는 구조**로 통합했다(학기별 1문서 = 조회 1회, Spark 쿼터 절약).
+문항·규칙은 Firestore가 아니라 `data/*.json` + 응답 문서의 버전 필드로 관리한다. 전 컬렉션 `ready_` 접두.
 
-- **문서키 규칙**: 학기별 반복응답은 `"2026-2_학번"` 형태 키로 해당 학기 최신값 업데이트,
-  변경이력은 `history`로 별도 보존. 무한 문서 생성 금지.
+| Collection (실제) | 핵심 저장정보 | 계획안 대응 |
+|---|---|---|
+| `ready_responses` | 문서키 `"{학기}_{학번}"`. profile(학번·성명·학과·학년·전화) + survey + unscored + certs + diag + result(JAS/JRS/CDS/Level/Route) + recommendations(코드 스냅샷) + survey/diagnostic/rules 버전 + auth_uid·saved_at | students·surveyResponses·certifications·diagnosticResults·studentRecommendations 통합 |
+| `ready_outreach` | 문서키 학번. 연락상태·메모·상담 회차·외부연계·취업상태 (상담사 전용) | (신설 — 아웃리치 §6.1) |
+| `ready_agencies` | 연계기관·취업처 등록부 (tombstone 방식 삭제) | (신설) |
+| `ready_staff` | 문서키 Auth uid. 교직원 역할·승인 상태 (DELETED tombstone) | (신설 — 계정 §6.4) |
+| `ready_reco_master` | 문서키 추천코드. 추천활동 **오버라이드**(시드 JSON 위에 병합) + deleted·archived·updated_at/by | recommendationMaster |
+| (미구현) | `diagnosticTests`·`adminSettings` — 문항·기준은 `data/*.json`이 진실, 학기는 날짜 자동 산출(computeSemester) | — |
+
+- **문서키 규칙**: 학기별 반복응답은 `"2026-2_학번"` 키로 해당 학기 최신값 업데이트. 무한 문서 생성 금지.
+  (`history` 별도 보존은 미구현 — 재응시는 덮어쓰기. §12-11 학생 인증과 함께 재검토)
 
 ### 7.2 개인정보·보안 원칙 (MJC-CAT §7과 다른 점 주의!)
 
@@ -364,6 +368,21 @@ v0.1 배점 구조상 취업 방향 학생의 최저 Level은 2가 되며, 이�
    로그아웃 시 상담 기록 로컬 캐시 제거(공용 PC 보호).
 10. **응답 문서에 버전·추천 스냅샷 저장** (`saveResponse`): survey/diagnostic/rules 버전 +
     결과 시점 추천 코드 — 규칙 개정 후에도 이력 추적·추천 유지.
+
+**2026-09-02 점검에서 추가 확정된 원칙 (11~14)**
+
+11. **원격에서 온 데이터는 쓰기 전에 형태를 검사한다** (`recoMaster.isValidActivity`): 콘솔 수기 편집·
+    스키마 변경으로 필드 타입이 깨진 문서 1건이 판정 엔진에 들어가면 전 학생 결과지가 백지가 되고
+    관리자 명단이 전건 스킵된다. 깨진 문서는 시드로 폴백하고 **몇 건을 무시했는지 화면에 표시**한다.
+    서버(Rules)에서도 같은 형태를 강제한다 — 클라이언트 방어만으로는 다른 경로 유입을 못 막는다.
+12. **공유 문서 수정은 "읽기 → 비교 → 쓰기"** (`recoMaster.saveRecoActivity`): 트랜잭션이라도 `tx.get`
+    없는 `tx.set`은 경합 보호를 하나도 제공하지 않는다. 편집 시작 시점의 `updated_at`과 원격 값을
+    비교해 다르면 **덮어쓰지 않고 CONFLICT를 반환**해 사용자에게 알린다.
+13. **파생 캐시는 원본이 바뀌면 무효화한다**: 학생 명단·CSV는 추천 Master로 계산된 파생 데이터다.
+    Master를 저장한 뒤 `invalidateStudentsCache()`를 부르지 않으면 "저장했는데 명단에 안 보인다"가 된다.
+    반대로 명단 조회(`fetchStudents`)는 Master pull을 **선행**해야 최신 기준으로 계산된다.
+14. **삭제는 이력을 남긴다** (tombstone + `archived`): 활동을 지워도 과거 학생이 "그때 추천받은 활동"은
+    명단·CSV에서 복원돼야 한다. 삭제 표식만 남기고 정의를 버리면 이력이 조용히 왜곡된다.
 
 ### 7.3 운영 계정·동의·연구 활용 — 최종 확정 (2026-08-28)
 
@@ -469,7 +488,7 @@ STEP 3 / 3  진로준비 진단    (#/diagnostic) 27문항 × 5점 척도, 화�
 | STEP 2. 화면 설계 | 학생 입력·결과, 관리자 Dashboard 와이어프레임 | MJC-CAT 패밀리룩 + 모바일 사용성 | ✅ **학생 화면은 실동 프로토타입으로 대체 (2026-08-27)** — 관리자 화면만 잔여 |
 | STEP 3. Firebase 설계 | Collection/문서키, Security Rules | 학생별·학기별 중복 및 버전관리 | — |
 | STEP 4. 핵심 개발 | 설문저장, 판정엔진, 결과화면, 추천활동 Master | **AI 없이 Level 결과 재현 가능 여부** | 🔶 **학생 흐름 완성 (2026-08-27)** — STEP1 소개·동의(이어서 진행 모달) → STEP2 기본정보·설문 → STEP3 진단 27문항(자동 진행) → 결과지(Level·JAS 게이지·영역바·보완영역·추천활동·상담 CTA·인쇄). 브라우저 실동 검증 완료(L4 시나리오·콘솔 에러 0). 잔여: Firestore 저장·관리자 |
-| STEP 5. 관리자 기능 | 필터, 통계, 추천활동 관리, Excel 다운로드 | 센터 실무자가 개발자 없이 운영 가능한지 | 🔶 **미리보기(mock) 모드 완성 (2026-08-27)** — `#/admin` 4개 섹션: ① 종합 현황(KPI 5·Level 분포·학과별 현황) ② 대상자 필터·명단(프리셋 6종 §6-2·Level/학과/검색·JAS 내림차순·행 클릭 → 학생 상세 모달: 지표·판정근거·영역점수·원응답·추천활동) ③ 추천활동 관리(Master 표+ON/OFF 로컬 전환) ④ 데이터 다운로드(Sheet 5종 CSV, UTF-8 BOM, `excel_columns.json` 주입). 데이터: `src/admin/mockStudents.ts` 가상 40명을 **실제 엔진으로 판정**(시드 고정 결정론). Firestore 연동 시 데이터 소스만 교체 |
+| STEP 5. 관리자 기능 | 필터, 통계, 추천활동 관리, Excel 다운로드 | 센터 실무자가 개발자 없이 운영 가능한지 | 🔶 **미리보기(mock) 모드 완성 (2026-08-27)** — `#/admin` 4개 섹션: ① 종합 현황(KPI 5·Level 분포·학과별 현황) ② 대상자 필터·명단(프리셋 6종 §6-2·Level/학과/검색·JAS 내림차순·행 클릭 → 학생 상세 모달: 지표·판정근거·영역점수·원응답·추천활동) ③ 추천활동 관리(**등록·수정·삭제·ON/OFF 클라우드 반영** — 2026-09-02) ④ 데이터 다운로드(통합 CSV + Sheet 5종, UTF-8 BOM, `excel_columns.json` 주입). **2026-08-30 Firestore 연동으로 실측 모드 가동** — mock 40명은 클라우드 미설정 시에만 쓰이는 미리보기(지연 생성) |
 | STEP 6. Pilot/보정 | 파일럿 데이터 분석·컷오프 조정 | Level 분포·상담성과·취업성과 검증 | — |
 | STEP 7. 정식 운영 | v1.0 고정, 전학과 확대 | 정기 분석·환류체계 연결 | — |
 
