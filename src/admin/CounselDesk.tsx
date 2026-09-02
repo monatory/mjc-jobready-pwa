@@ -24,8 +24,9 @@ const SECTION_PERMS: Record<Section, string> = {
 
 export default function CounselDesk() {
   const navigate = useNavigate();
-  const { students, source, skipped } = useStudents(); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 C4-09)
   const [session, setSession] = useState<AdminSession | null>(getSession);
+  // 로그인 게이트 통과 후에만 실명 응답을 조회 (점검 SEC-02)
+  const { students, source, skipped } = useStudents(Boolean(session)); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 C4-09)
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("students");
   const [folded, toggleFold] = useSidebarFold();

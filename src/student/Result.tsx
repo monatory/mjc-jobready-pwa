@@ -62,9 +62,13 @@ function JasGauge({ score }: { score: number }) {
 
 export default function Result() {
   const navigate = useNavigate();
-  const profile = getProfile();
-  const survey = getSurvey();
-  const diag = getDiag();
+  // 세션 읽기는 **마운트 시 1회로 고정**한다. getSurvey/getDiag는 호출마다 JSON.parse로 새 객체를
+  // 돌려주므로, 렌더마다 새 참조가 되면 evalResult→analysis→제출 effect가 연쇄로 매 렌더 재실행된다.
+  // 그 상태에서 제출이 실패하면 FAIL↔SAVING을 오가며 **무한 재제출 루프**가 돌았다
+  // (2026-09-02 전면 점검 STU-01). 재방문 시 재제출은 컴포넌트가 다시 마운트되며 그대로 동작한다.
+  const profile = useMemo(() => getProfile(), []);
+  const survey = useMemo(() => getSurvey(), []);
+  const diag = useMemo(() => getDiag(), []);
 
   // 진단은 "전 문항 완주"여야 결과 — 일부만 응답한 상태로 URL 직접 진입 시 불완전 판정이
   // 정식 결과처럼 표시·제출되던 문제 수정 (감사 S2-03·ENG-07)
@@ -115,8 +119,13 @@ export default function Result() {
     return { weak, recs };
   }, [evalResult, recoMaster]);
 
+  // 학번·성명이 빈 프로필은 서버 규칙(docId=="{학기}_{학번}", 학번 4~20자)에서 영구 403이라
+  // 재시도가 절대 성공하지 못한다. 제출을 시도하지 말고 NO_PROFILE 안내로 보낸다 (점검 STU-03).
+  const profileOk = Boolean(profile && profile.student_id.trim() && profile.name.trim());
+  const analysisReady = analysis !== null;
+
   const payload = useMemo<ResponsePayload | null>(() => {
-    if (!hasData || !evalResult || !analysis || !profile) return null;
+    if (!hasData || !evalResult || !analysis || !profile || !profileOk) return null;
     return {
       profile,
       survey,
@@ -134,7 +143,7 @@ export default function Result() {
       recommendations: analysis.recs.map((a) => a.recommendation_code),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasData, evalResult, analysis]);
+  }, [hasData, evalResult, analysis, profileOk]);
   const serialized = useMemo(() => (payload ? JSON.stringify(payload) : ""), [payload]);
   const [submitState, setSubmitState] = useState<"OFF" | "SAVING" | "DONE" | "FAIL" | "NO_PROFILE">(
     CLOUD_ENABLED ? "SAVING" : "OFF"
@@ -170,9 +179,10 @@ export default function Result() {
     return () => {
       cancelled = true;
     };
-    // analysis: Master 조회 완료 시 payload 없이도(프로필 유실) NO_PROFILE 판정이 돌도록 포함
+    // Master 조회 완료 여부만 dep로 둔다 — analysis 객체를 그대로 넣으면 참조가 흔들릴 때
+    // 실패 상태에서 재제출이 무한 반복된다 (점검 STU-01). 불리언은 한 번만 바뀐다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serialized, retryTick, analysis]);
+  }, [serialized, retryTick, analysisReady]);
 
   if (!hasData || !evalResult) {
     return (

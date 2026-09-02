@@ -13,7 +13,7 @@ import { surveyItems, diagnosticBank, levelRules } from "../lib/dataLoader";
 import { getMasterSync, pullRecoMaster, findArchivedActivity } from "../lib/recoMaster";
 import { localDateStr, todayStr } from "../lib/dates";
 import { getMockStudents, type StudentRecord } from "./mockStudents";
-import { moveOutreachLocal } from "./outreach";
+import { moveOutreachLocal, type OutreachEntry } from "./outreach";
 import type { ResponsePayload } from "../lib/saveResponse";
 
 export type StudentsSource = "CLOUD" | "MOCK" | "LOADING" | "ERROR";
@@ -185,27 +185,52 @@ export async function updateStudentProfile(
         return { ok: false, message: `학번 ${newStudentId}의 응답이 이미 있습니다 — 학번을 확인해 주세요.` };
 
       // 상담 기록(ready_outreach) 키 이동 — 담당자(행정) 계정은 권한이 없어 실패할 수 있음 → 안내
-      let outreachMoved = true;
+      // 대상 학번에 기록이 이미 있으면 **병합**한다. 예전에는 복사 없이 원본을 지워서
+      // 옛 학번의 상담 이력(회차·연계·취업)이 통째로 사라졌다 (2026-09-02 점검 CNS-03/CON-05).
+      let outreachResult: "MOVED" | "MERGED" | "NONE" | "FAIL" = "NONE";
       try {
-        await runTransaction(db, async (tx) => {
+        outreachResult = await runTransaction(db, async (tx) => {
           const oldRef = doc(db, COL.outreach, rec.student_id);
           const newRef = doc(db, COL.outreach, newStudentId);
           const [oldSnap, dupSnap] = [await tx.get(oldRef), await tx.get(newRef)];
-          if (!oldSnap.exists()) return;
-          if (!dupSnap.exists()) tx.set(newRef, oldSnap.data());
+          if (!oldSnap.exists()) return "NONE" as const;
+          const src = oldSnap.data() as OutreachEntry;
+          if (!dupSnap.exists()) {
+            tx.set(newRef, src);
+            tx.delete(oldRef);
+            return "MOVED" as const;
+          }
+          // 병합: 회차는 양쪽을 합쳐 날짜순 재번호, 나머지는 대상(새 학번) 값을 우선하되 빈 값만 채운다
+          const dst = dupSnap.data() as OutreachEntry;
+          const sessions = [...(src.sessions ?? []), ...(dst.sessions ?? [])]
+            .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+            .map((s, i) => ({ ...s, seq: i + 1 }));
+          const merged: OutreachEntry = {
+            ...src,
+            ...dst,
+            sessions,
+            memo: dst.memo || src.memo,
+            final_summary: dst.final_summary || src.final_summary,
+            referral: dst.referral ?? src.referral,
+            employment: dst.employment ?? src.employment,
+            updated_at: new Date().toISOString(),
+          };
+          tx.set(newRef, merged);
           tx.delete(oldRef);
+          return "MERGED" as const;
         });
       } catch {
-        outreachMoved = false;
+        outreachResult = "FAIL";
       }
-      moveOutreachLocal(rec.student_id, newStudentId); // 로컬 캐시도 함께 이동
+      if (outreachResult !== "FAIL") moveOutreachLocal(rec.student_id, newStudentId); // 로컬 캐시도 함께 이동
       invalidateStudentsCache();
-      return {
-        ok: true,
-        message: outreachMoved
-          ? "학생 정보가 수정되었습니다 (상담 기록도 새 학번으로 이동)."
-          : "학생 정보가 수정되었습니다. 상담 기록 이동 권한이 없어(상담사 계열 전용) 상담 기록은 워크스페이스에서 확인이 필요합니다.",
-      };
+      const outreachMsg = {
+        MOVED: " (상담 기록도 새 학번으로 이동)",
+        MERGED: " ⚠ 새 학번에 이미 상담 기록이 있어 **두 기록을 병합**했습니다 — 워크스페이스에서 회차·연계 내용을 확인해 주세요.",
+        NONE: "",
+        FAIL: " ⚠ 상담 기록은 옮기지 못했습니다(권한 없음 또는 네트워크 오류). 기록은 옛 학번에 그대로 남아 있으니 상담사 계정으로 다시 시도해 주세요.",
+      }[outreachResult];
+      return { ok: true, message: `학생 정보가 수정되었습니다.${outreachMsg}` };
     }
 
     // 학번 무변경 — 같은 문서 profile만 갱신 (트랜잭션으로 최신본 기준 수정)
@@ -227,9 +252,12 @@ export async function updateStudentProfile(
 /** 화면용 훅 — 클라우드 설정 시 조회가 끝날 때까지 "불러오는 중"(빈 목록)으로 표시하고
  *  결과(실측 0건 포함 / 오류)로 교체한다. 캐시 무효화(로그인/로그아웃/새로고침 버튼) 시 자동 재조회.
  *  캐시가 이미 채워진 상태(화면 간 이동)에서는 then이 즉시 이행돼 깜빡임이 없다. */
-export function useStudents(): StudentsData {
+/** @param enabled 로그인 게이트를 통과한 뒤에만 조회한다. 미인증 상태에서 실명 응답을 미리
+ *  받아오지 않도록 하는 안전장치 (서버 규칙이 1차 방어, 이건 2차 — 2026-09-02 점검 SEC-02). */
+export function useStudents(enabled = true): StudentsData {
   const [data, setData] = useState<StudentsData>(() => lastKnown ?? (CLOUD_ENABLED ? LOADING : mockData()));
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     const load = () => {
       if (CLOUD_ENABLED && !cache) setData(LOADING); // 재조회 시작 — mock 깜빡임 방지
@@ -241,6 +269,6 @@ export function useStudents(): StudentsData {
       alive = false;
       listeners.delete(load);
     };
-  }, []);
+  }, [enabled]);
   return data;
 }

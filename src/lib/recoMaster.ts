@@ -218,7 +218,8 @@ export type RecoSaveOutcome = { result: RecoPushResult | "CONFLICT"; remote?: Re
 export async function saveRecoActivity(
   activity: RecoActivity,
   editor: string,
-  baseUpdatedAt?: string
+  baseUpdatedAt?: string,
+  allowRevive = false
 ): Promise<RecoSaveOutcome> {
   const docData: RecoOverride = {
     ...activity,
@@ -244,6 +245,10 @@ export async function saveRecoActivity(
       const remote = snap.exists() ? (snap.data() as RecoOverride) : null;
       // 신규 등록인데 이미 문서가 있음(다른 관리자가 선점, 또는 과거 삭제분) → 덮어쓰지 않는다
       if (!baseUpdatedAt && remote && !remote.deleted) return remote;
+      // 삭제된 활동은 baseUpdatedAt 없는 경로(ON/OFF 토글 등)로 조용히 되살아나면 안 된다.
+      // 되살리기는 "신규 등록" 폼에서 같은 코드를 명시적으로 다시 입력할 때만 허용
+      // (allowRevive) — 2026-09-02 점검 CON-07.
+      if (remote && remote.deleted && !allowRevive) return remote;
       // 수정인데 내가 읽은 이후 원격이 바뀜 → 남의 수정을 지우지 않는다
       if (baseUpdatedAt && remote && remote.updated_at && remote.updated_at !== baseUpdatedAt) return remote;
       tx.set(ref, docData);
@@ -264,31 +269,52 @@ export async function saveRecoActivity(
  * 삭제 시점의 활동 정의(archived)를 함께 보존한다 — 과거 학생이 추천받은 활동이 삭제돼도
  * 명단·CSV에서 활동명을 복원할 수 있게 (2026-09-02 점검 [중간-1]).
  */
-export async function deleteRecoActivity(code: string, editor: string): Promise<RecoPushResult> {
-  const current = getMasterSync().activities.find((a) => a.recommendation_code === code);
-  const tomb: RecoOverride = {
+export async function deleteRecoActivity(
+  code: string,
+  editor: string,
+  baseUpdatedAt?: string
+): Promise<RecoPushResult | "CONFLICT"> {
+  const local = getMasterSync().activities.find((a) => a.recommendation_code === code);
+  const makeTomb = (archived: RecoActivity | undefined): RecoOverride => ({
     recommendation_code: code,
     deleted: true,
-    archived: current,
+    archived,
     updated_at: new Date().toISOString(),
     updated_by: editor,
-  };
-  const applyLocal = () => {
+  });
+  const applyLocal = (tomb: RecoOverride) => {
     overrides[code] = tomb;
     saveCache();
     notifyChanged();
   };
   if (!CLOUD_ENABLED) {
-    applyLocal();
+    applyLocal(makeTomb(local));
     return "LOCAL";
   }
   try {
     await authReady();
     const db = getDb();
-    await runTransaction(db, async (tx) => {
-      tx.set(doc(db, COL.recoMaster, code), tomb);
+    const ref = doc(db, COL.recoMaster, code);
+    // 저장과 동일하게 원격 최신본을 먼저 읽는다 (§7.2.1-12).
+    //  · 내가 읽은 뒤 다른 관리자가 수정했으면 CONFLICT — 무경고 삭제 금지
+    //  · archived에는 **원격 최신 정의**를 보존 — 낡은 로컬 정의를 박제하지 않는다
+    // (2026-09-02 점검 RECO-02)
+    const outcome = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const remote = snap.exists() ? (snap.data() as RecoOverride) : null;
+      if (remote?.deleted) return "ALREADY" as const; // 이미 삭제됨 — 재삭제는 무해, 성공 처리
+      if (baseUpdatedAt && remote?.updated_at && remote.updated_at !== baseUpdatedAt) return "CONFLICT" as const;
+      const archived = remote && isValidActivity(remote) ? remote : local;
+      const tomb = makeTomb(archived);
+      tx.set(ref, tomb);
+      return tomb;
     });
-    applyLocal();
+    if (outcome === "CONFLICT") return "CONFLICT";
+    if (outcome === "ALREADY") {
+      applyLocal(makeTomb(local));
+      return "OK";
+    }
+    applyLocal(outcome);
     return "OK";
   } catch {
     return "FAIL";

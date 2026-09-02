@@ -159,7 +159,34 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
   };
 
   const conflictMsg = (name: string) =>
-    `저장하지 않았습니다 — "${name}"을(를) 다른 관리자가 방금 수정했습니다. 새로고침으로 최신 내용을 확인한 뒤 다시 편집해 주세요. (덮어쓰기를 막았습니다)`;
+    `저장하지 않았습니다 — "${name}"을(를) 다른 관리자가 방금 수정했습니다. 아래 "최신 내용 불러오기"를 눌러 확인한 뒤 다시 편집해 주세요. (덮어쓰기를 막았습니다)`;
+
+  /** 충돌·오류 뒤 최신 목록 다시 받기 — 화면을 떠나지 않고 해소할 수단 (점검 RECO-03) */
+  const [conflicted, setConflicted] = useState(false);
+  const reload = async () => {
+    setBusy(true);
+    const s = await pullRecoMaster();
+    setBusy(false);
+    setCloudState(s);
+    setList(listForAdmin());
+    invalidateStudentsCache();
+    if (s === "CLOUD") {
+      setSaveFail("");
+      setConflicted(false);
+      if (editing && editing !== "NEW") {
+        const fresh = listForAdmin().find((a) => a.recommendation_code === editing);
+        if (fresh) {
+          setForm(toForm(fresh)); // 최신 내용으로 폼 갱신 — 편집을 이어갈 수 있게
+          setBaseUpdatedAt(updatedAtOf(editing));
+        } else {
+          closeForm(); // 그 사이 삭제됨
+          setSaveFail(`"${editing}" 활동은 다른 관리자가 삭제했습니다.`);
+        }
+      }
+    } else {
+      setSaveFail("최신 내용을 불러오지 못했습니다. 네트워크·로그인 상태를 확인해 주세요.");
+    }
+  };
 
   const submit = async () => {
     const err = validate(form);
@@ -178,16 +205,22 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
       active: form.active,
     };
     setBusy(true);
-    const { result } = await saveRecoActivity(activity, editor, editing === "NEW" ? undefined : baseUpdatedAt);
+    const { result } = await saveRecoActivity(
+      activity,
+      editor,
+      editing === "NEW" ? undefined : baseUpdatedAt,
+      editing === "NEW" // 삭제된 코드의 되살리기는 신규 등록 폼에서만 허용 (점검 CON-07)
+    );
     setBusy(false);
     if (result === "FAIL") {
       setSaveFail(`저장 실패 — ${activity.name}. 네트워크·로그인·규칙 게시 상태를 확인한 뒤 다시 시도해 주세요.`);
       return;
     }
     if (result === "CONFLICT") {
+      setConflicted(true);
       setSaveFail(
         editing === "NEW"
-          ? `저장하지 않았습니다 — 코드 ${activity.recommendation_code}는 이미 공유 저장소에 존재합니다. 새로고침 후 기존 활동을 수정해 주세요.`
+          ? `저장하지 않았습니다 — 코드 ${activity.recommendation_code}는 이미 공유 저장소에 존재합니다(삭제된 활동일 수 있음). "최신 내용 불러오기" 후 기존 활동을 수정해 주세요.`
           : conflictMsg(activity.name)
       );
       return;
@@ -206,7 +239,7 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
     );
     setBusy(false);
     if (result === "FAIL") setSaveFail(`ON/OFF 저장 실패 — ${a.name}. 다시 시도해 주세요.`);
-    else if (result === "CONFLICT") setSaveFail(conflictMsg(a.name));
+    else if (result === "CONFLICT") { setConflicted(true); setSaveFail(conflictMsg(a.name)); }
     else afterSaved();
   };
 
@@ -217,9 +250,10 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
       : "";
     if (!window.confirm(`"${a.name}" 활동을 삭제할까요? 학생 결과지 추천에서 즉시 제외됩니다.${seedNote}`)) return;
     setBusy(true);
-    const result = await deleteRecoActivity(a.recommendation_code, editor);
+    const result = await deleteRecoActivity(a.recommendation_code, editor, updatedAtOf(a.recommendation_code));
     setBusy(false);
     if (result === "FAIL") setSaveFail(`삭제 실패 — ${a.name}. 다시 시도해 주세요.`);
+    else if (result === "CONFLICT") { setConflicted(true); setSaveFail(conflictMsg(a.name)); }
     else {
       afterSaved();
       if (editing === a.recommendation_code) closeForm();
@@ -238,7 +272,16 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
         {cloudState === "LOADING" && "공유 저장소에서 활동 목록을 불러오는 중…"}
         {cloudState === "FAIL" && "⚠ 공유 저장소 조회 실패 — 아래 목록은 시드 기준일 수 있습니다. 네트워크·규칙 게시 상태 확인 후 새로고침해 주세요."}
       </p>
-      {saveFail && <div className="alert">{saveFail}</div>}
+      {saveFail && (
+        <div className="alert">
+          {saveFail}
+          {conflicted && (
+            <button className="btn btn--ghost btn--sm" style={{ marginLeft: 8 }} disabled={busy} onClick={() => void reload()}>
+              ↻ 최신 내용 불러오기
+            </button>
+          )}
+        </div>
+      )}
       {expiry.expired > 0 && (
         <div className="alert">
           ⚠ 활성 상태인데 <strong>기간이 이미 지난 활동 {expiry.expired}건</strong> — 학생에게 추천되지 않습니다.

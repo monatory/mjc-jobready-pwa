@@ -103,6 +103,22 @@ console.log("[4] Recommendation Master");
   check("활성기간 형식(YYYY-MM-DD)", master.activities.every((a) => /^\d{4}-\d{2}-\d{2}$/.test(a.active_from) && /^\d{4}-\d{2}-\d{2}$/.test(a.active_to)));
   for (const l of [1, 2, 3, 4])
     check(`Level ${l} 대상 활성 활동 1개 이상`, master.activities.some((a) => a.active && a.levels.includes(l)));
+
+  // 활성기간 만료 감시 (2026-09-02 점검 MISS-01) — 시드 활동이 전부 같은 날 끝나도록 방치하면
+  // 그 날짜 이후 전 학생 결과지의 추천이 0건이 되는데 기존 검증은 전부 통과했다.
+  // 오늘 기준으로 "지금 학생에게 노출 가능한" 활동이 Level별로 있는지, 만료 임박이 아닌지 확인한다.
+  const today = new Date().toISOString().slice(0, 10);
+  const live = master.activities.filter((a) => a.active && a.active_from <= today && today <= a.active_to);
+  check(`오늘(${today}) 노출 가능한 활성 활동 1개 이상`, live.length > 0);
+  for (const l of [1, 2, 3, 4])
+    check(`Level ${l} 오늘 노출 가능한 활동 1개 이상`, live.some((a) => a.levels.includes(l)));
+  // 60일 이내 전량 만료 = 곧 추천이 사라진다는 뜻 → 기간 연장 전까지 CI가 실패한다
+  const horizon = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const aliveAtHorizon = master.activities.filter((a) => a.active && a.active_to >= horizon);
+  check(
+    `60일 뒤(${horizon})에도 남는 활성 활동 1개 이상 — 전량 만료 예정이면 활성기간을 연장할 것(§12-08)`,
+    aliveAtHorizon.length > 0
+  );
 }
 
 console.log("[5] 결과 템플릿·Excel 정의");
