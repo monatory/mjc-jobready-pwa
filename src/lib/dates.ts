@@ -15,3 +15,13 @@ export function localDateStr(iso: string | undefined | null): string {
 export function todayStr(): string {
   return localDateStr(new Date().toISOString());
 }
+
+/** ISO 일시 → 로컬 기준 "YYYY-MM-DD HH:MM" — 화면에 시각까지 보여줄 때.
+ *  `iso.slice(0,16)`(UTC)로 자르면 KST 새벽·오전 기록이 전날로 표시된다 (2026-09-02 점검 CNS-06). */
+export function localDateTimeStr(iso: string | undefined | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${localDateStr(iso)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}

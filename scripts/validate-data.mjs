@@ -125,6 +125,17 @@ console.log("[5] 결과 템플릿·Excel 정의");
 {
   check("Level 1~4 템플릿 존재", ["1", "2", "3", "4"].every((l) => templates.levels[l]?.title && templates.levels[l]?.body));
   check("진학·창업 Route 템플릿 존재", !!templates.route_overrides?.FURTHER_STUDY_STARTUP);
+  // 결과지가 실제로 렌더에 쓰는 필드까지 확인 — headline·consultant가 빠지면 결과지가 크래시한다
+  // (문구 확정 과정에서 누락되기 쉬운데 기존 검증은 title·body만 봤다 — 2026-09-02 점검 ENG-06)
+  const TPL_FIELDS = ["title", "headline", "body", "consultant"];
+  check(
+    "Level 템플릿 필수 필드(title·headline·body·consultant)",
+    ["1", "2", "3", "4"].every((l) => TPL_FIELDS.every((f) => typeof templates.levels[l]?.[f] === "string" && templates.levels[l][f].length > 0))
+  );
+  check(
+    "Route 템플릿 필수 필드(title·headline·body·consultant)",
+    Object.values(templates.route_overrides ?? {}).every((t) => TPL_FIELDS.every((f) => typeof t?.[f] === "string" && t[f].length > 0))
+  );
   check("법적 안내 문구 존재", typeof templates.legal_footer === "string" && templates.legal_footer.length > 10);
   const sheetNames = Object.keys(excel.sheets);
   check(`Excel Sheet 5종 (현재 ${sheetNames.length})`, sheetNames.length === 5);

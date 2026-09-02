@@ -24,7 +24,7 @@ import {
   type OutreachSaveResult,
 } from "./outreach";
 import { AGENCY_TYPE_LABELS, agencyName, type Agency } from "./agencies";
-import { todayStr } from "../lib/dates";
+import { todayStr, localDateTimeStr } from "../lib/dates";
 
 const today = () => todayStr(); // 로컬(KST) 기준 — UTC 사용 시 새벽에 전날로 찍힘 (감사 ENG-05)
 
@@ -188,7 +188,7 @@ export default function CounselRecord({
         <div className="outreach-editor__foot">
           <span className="muted small">
             {entry
-              ? `마지막 기록: ${entry.updated_at.slice(0, 16).replace("T", " ")} · ${entry.by}`
+              ? `마지막 기록: ${localDateTimeStr(entry.updated_at)} · ${entry.by}`
               : "아직 기록이 없습니다."}
           </span>
           <button className="btn btn--primary btn--sm" disabled={saving} onClick={saveContact}>연락 기록 저장</button>

@@ -1499,6 +1499,12 @@ body {
 .admin-login__brand {
   justify-content: center;
 }
+/* 로그인 카드는 흰 배경 — 사이드바용 흰색 로고 규칙(.admin__brand .app-header__logo)이 그대로
+   적용돼 배지가 보이지 않던 것 복원 (2026-09-02 점검 UI-05) */
+.admin-login__brand .app-header__logo {
+  background: var(--navy);
+  color: #fff;
+}
 .admin-login__tabs {
   display: flex;
   gap: 8px;
