@@ -10,6 +10,10 @@
   --line: #e4e8f0;
   --green: #1a7f37;
   --red: #c62828;
+  /* 글자용 주황 — 브랜드 --orange(#f5a623)는 흰 바탕 대비 1.9로 본문·라벨에 쓰면 읽히지 않는다 (2026-09-03 가독성 점검).
+     --orange-text: 작은 글자용(대비 5.0) / --orange-deep: 큰 제목·숫자 강조용(대비 3.9). 배경·그라데이션·바는 --orange 유지 */
+  --orange-text: #a35f00;
+  --orange-deep: #b8700a;
 }
 
 * {
@@ -83,11 +87,11 @@ body {
   font-size: 0.85rem;
 }
 .app-header__titles span {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   color: var(--muted);
 }
 .step-indicator {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 700;
   color: var(--navy);
   background: #eef3fd;
@@ -127,19 +131,19 @@ body {
 }
 .progress-text {
   margin-left: auto;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .required-mark {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   color: var(--red);
   background: #fdecea;
   border-radius: 6px;
   padding: 2px 6px;
 }
 .optional {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
   font-weight: 400;
 }
@@ -151,9 +155,9 @@ body {
   background: linear-gradient(180deg, #ffffff, #f6f9ff);
 }
 .hero__eyebrow {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  color: var(--orange);
+  color: var(--orange-text);
   letter-spacing: 0.12em;
 }
 .hero__title {
@@ -163,7 +167,7 @@ body {
   margin: 4px 0 8px;
 }
 .hero__title .accent {
-  color: var(--orange);
+  color: var(--orange-deep);
 }
 .hero__sub {
   font-size: 0.88rem;
@@ -188,7 +192,7 @@ body {
   font-size: 1.05rem;
 }
 .stat span {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   color: var(--muted);
 }
 .flow-list {
@@ -213,7 +217,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
-  font-size: 0.8rem;
+  font-size: 0.875rem;
 }
 .consent-terms > div {
   display: flex;
@@ -224,7 +228,7 @@ body {
   border-top: 1px solid var(--line);
 }
 .consent-terms dt {
-  flex: 0 0 64px;
+  flex: 0 0 72px;
   font-weight: 700;
   color: var(--navy);
   word-break: keep-all; /* 좁은 화면에서 "관리 부/서"처럼 낱말 중간이 끊기지 않게 */
@@ -237,7 +241,7 @@ body {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   background: #f8fafc;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -254,11 +258,11 @@ body {
 .agree em {
   color: var(--muted);
   font-style: normal;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
 }
 .pilot-note {
   margin-top: 10px;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
   text-align: center;
 }
@@ -323,7 +327,7 @@ body {
   grid-column: 1 / -1; /* 2열 그리드에서 전체 폭 차지 — 키 큰 블록(학년 과정 구분)이 옆 칸을 늘리지 않게 */
 }
 .field__label {
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 700;
 }
 .input {
@@ -390,7 +394,7 @@ body {
   justify-content: center;
   background: #eef3fd;
   color: var(--navy);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 800;
   border-radius: 6px;
   min-width: 22px;
@@ -445,7 +449,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #f8fafc;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
 }
 .q-info summary {
   padding: 8px 12px;
@@ -467,7 +471,7 @@ body {
   border-radius: 8px;
   background: #eef4ff;
   color: var(--navy);
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 600;
 }
 
@@ -483,7 +487,7 @@ body {
   color: var(--ink);
 }
 .todo-card__msg strong {
-  color: #b26a00;
+  color: #9a5a00;
 }
 .todo-card__sub {
   margin: 12px 0 6px;
@@ -522,7 +526,7 @@ body {
   transition: width 0.3s;
 }
 .diag-progress__text {
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -534,7 +538,7 @@ body {
   display: inline-block;
   background: #fff4e0;
   color: #9a6200;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 700;
   border-radius: 6px;
   padding: 3px 8px;
@@ -569,10 +573,10 @@ body {
   font-size: 1rem;
 }
 .scale span {
-  font-size: 0.62rem;
-  color: var(--muted);
+  font-size: 0.7rem; /* 0.62rem(9.9px)은 폰에서 읽히지 않았다 — 5칸 그리드라 2줄 허용 */
+  color: #4b5262;
   text-align: center;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 .scale--on {
   background: var(--navy);
@@ -594,7 +598,7 @@ body {
   border-top-color: var(--green);
 }
 .level-card__route {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--muted);
@@ -615,7 +619,7 @@ body {
 }
 .level-card__who {
   margin-top: 12px;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   color: var(--muted);
 }
 .gauge {
@@ -629,7 +633,7 @@ body {
   fill: var(--ink);
 }
 .gauge__unit {
-  font-size: 11px;
+  font-size: 12px;
   fill: var(--muted);
 }
 .indices {
@@ -647,7 +651,7 @@ body {
 }
 .index span {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
 }
 .index strong {
@@ -661,10 +665,10 @@ body {
 }
 .domain-bar {
   display: grid;
-  grid-template-columns: 74px 1fr 34px;
+  grid-template-columns: 78px 1fr 36px;
   align-items: center;
   gap: 8px;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
 .domain-bar__track {
   height: 9px;
@@ -687,7 +691,7 @@ body {
 }
 .weak-note {
   margin-top: 10px;
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   color: #9a6200;
   background: #fff4e0;
   border-radius: 8px;
@@ -707,11 +711,11 @@ body {
   margin-bottom: 3px;
 }
 .rec p {
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   color: var(--muted);
 }
 .owner-badge {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
   border-radius: 6px;
   padding: 2px 7px;
@@ -737,12 +741,12 @@ body {
   margin-bottom: 6px;
 }
 .cta-card p {
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   color: var(--muted);
   margin-bottom: 12px;
 }
 .legal {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   color: var(--muted);
   text-align: center;
   padding: 8px 12px;
@@ -928,7 +932,7 @@ body {
 }
 .muted {
   color: var(--muted);
-  font-size: 0.83rem;
+  font-size: 0.85rem;
 }
 .empty-card {
   text-align: center;
@@ -1138,7 +1142,7 @@ body {
   padding: 14px 16px;
 }
 .kpi span {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   color: var(--muted);
   display: block;
 }
@@ -1199,7 +1203,7 @@ body {
 }
 .admin-table th {
   text-align: left;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -1316,14 +1320,14 @@ body {
 }
 .admin-table .small,
 .small {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
 }
 .row-off td {
   opacity: 0.45;
 }
 .lv-badge {
   display: inline-block;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 800;
   border-radius: 6px;
   padding: 3px 8px;
@@ -1482,7 +1486,7 @@ body {
 }
 .reason-list {
   padding-left: 16px;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   color: var(--ink);
   display: flex;
   flex-direction: column;
@@ -1622,7 +1626,7 @@ body {
 }
 .acct-status--disabled {
   background: #ececf0;
-  color: #7a7f8c;
+  color: #5f6675;
 }
 .acct-actions {
   display: flex;
@@ -1636,8 +1640,8 @@ body {
 /* 기본정보 필드 보조 안내 (휴대전화 등) */
 .field__hint {
   margin: 4px 0 0;
-  font-size: 0.78rem;
-  color: #7a7f8c;
+  font-size: 0.82rem;
+  color: #5f6675; /* 대비 4.0 → 5.8 */
 }
 
 /* ── 상담사 아웃리치(연락 관리) — 2026-08-30 ─────────────────── */
@@ -1674,7 +1678,7 @@ body {
 }
 .outreach-badge--no_response {
   background: #ececf0;
-  color: #7a7f8c;
+  color: #5f6675;
 }
 .kpi--urgent strong {
   color: #c0392b;
@@ -1813,7 +1817,7 @@ body {
   padding: 3px 9px;
   white-space: nowrap;
 }
-.ref-badge--none { background: #ececf0; color: #7a7f8c; }
+.ref-badge--none { background: #ececf0; color: #5f6675; }
 .ref-badge--wanted { background: #fff4e0; color: #b06000; font-weight: 700; }
 .ref-badge--referred { background: #e8f0fe; color: #1a56b0; font-weight: 700; }
 .ref-badge--followup { background: #ede7fb; color: #5b3fa8; font-weight: 700; }
@@ -1824,7 +1828,7 @@ body {
   padding: 3px 9px;
   white-space: nowrap;
 }
-.emp-badge--none { background: #ececf0; color: #7a7f8c; }
+.emp-badge--none { background: #ececf0; color: #5f6675; }
 .emp-badge--seeking { background: #fff4e0; color: #b06000; }
 .emp-badge--employed { background: #e7f6ec; color: #1c7a3d; font-weight: 700; }
 .emp-badge--further_study, .emp-badge--startup, .emp-badge--etc { background: #e8f0fe; color: #1a56b0; }
