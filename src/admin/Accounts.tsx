@@ -17,6 +17,7 @@ import {
   createLocalAccount,
   setStaffRoleCloud,
   setAccountRole,
+  leadCounterpart,
   ROLE_LABELS,
   STATUS_LABELS,
   type AdminAccount,
@@ -79,8 +80,10 @@ export default function Accounts({
       let ok = false;
       if (action === "approve") ok = await approveStaffCloud(a.uid);
       if (action === "toggleActive") ok = await setStaffStatusCloud(a.uid, a.status === "ACTIVE" ? "DISABLED" : "ACTIVE");
-      if (action === "toggleLead")
-        ok = await setStaffLeadCloud(a.uid, a.role === "COUNSELOR" ? "COUNSELOR_LEAD" : "COUNSELOR");
+      if (action === "toggleLead") {
+        const next = leadCounterpart(a.role);
+        ok = next ? await setStaffLeadCloud(a.uid, next) : false;
+      }
       if (action === "remove") ok = await removeStaffCloud(a.uid);
       if (action === "reassign" && reassignTo) ok = await setStaffRoleCloud(a.uid, reassignTo);
       if (!ok)
@@ -255,9 +258,10 @@ export default function Accounts({
                           {a.status === "ACTIVE" ? "비활성" : "활성"}
                         </button>
                       )}
-                      {canPromote && (a.role === "COUNSELOR" || a.role === "COUNSELOR_LEAD") && a.status === "ACTIVE" && (
+                      {/* 관리자 임명·해제 — 상담사↔상담사 관리자, 담당자↔담당자 관리자 (2026-09-03) */}
+                      {canPromote && leadCounterpart(a.role) && a.status === "ACTIVE" && (
                         <button className="btn btn--ghost btn--sm" onClick={() => void act(a, "toggleLead")}>
-                          {a.role === "COUNSELOR" ? "관리자로 지정" : "관리자 해제"}
+                          {a.role === "COUNSELOR" || a.role === "ADMIN" ? "관리자로 지정" : "관리자 해제"}
                         </button>
                       )}
                       {/* 구분 이동 — 신청이 반대편 대기열에 접수됐을 때 삭제·재신청 없이 옮긴다 (2026-09-03) */}

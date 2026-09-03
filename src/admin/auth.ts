@@ -15,10 +15,12 @@ import { CLOUD_ENABLED, COL, getAuthInst, getDb, getSignupAuth, getSignupDb, aut
 
 // 역할 체계 (2026-08-30 사용자 확정 — "담당자는 상담사 페이지를 볼 수 없어야 한다"):
 //  MASTER          마스터(개발자=사용자) — 양쪽 전부
+//  ADMIN_LEAD      담당자 관리자 — 담당자(행정) 권한 + 담당자 계정 승인·관리 (2026-09-03 추가,
+//                  상담사 관리자와 대칭. 마스터가 임명하며 상담사 워크스페이스는 여전히 접근 불가)
 //  ADMIN           담당자(행정) — 일반 관리 화면 + 엑셀 다운로드만. 상담사 워크스페이스 접근 불가
 //  COUNSELOR_LEAD  상담사 관리자 — 상담사 워크스페이스 + 상담사 계정 등록·관리
 //  COUNSELOR       상담사 — 상담사 워크스페이스(연락 관리 공유)
-export type AdminRole = "MASTER" | "ADMIN" | "COUNSELOR_LEAD" | "COUNSELOR";
+export type AdminRole = "MASTER" | "ADMIN_LEAD" | "ADMIN" | "COUNSELOR_LEAD" | "COUNSELOR";
 // DELETED: 클라우드 계정 삭제 tombstone — 문서를 지우면 Auth 사용자가 남아 재로그인 시
 // "고아 복구" 경로로 승인 대기에 계속 부활했다(감사 P3-12·C4-10). 삭제 표식을 남겨 차단한다.
 export type AccountStatus = "ACTIVE" | "PENDING" | "DISABLED" | "DELETED";
@@ -44,10 +46,19 @@ export interface AdminSession {
 
 export const ROLE_LABELS: Record<AdminRole, string> = {
   MASTER: "마스터 관리자",
+  ADMIN_LEAD: "담당자 관리자",
   ADMIN: "담당자(행정)",
   COUNSELOR_LEAD: "상담사 관리자",
   COUNSELOR: "상담사",
 };
+
+/** 관리자(LEAD) ↔ 일반 짝 — 임명·해제에 쓰는 반대편 역할. 그 외 역할은 null(전환 대상 아님) */
+export const leadCounterpart = (role: AdminRole): AdminRole | null =>
+  role === "ADMIN" ? "ADMIN_LEAD"
+    : role === "ADMIN_LEAD" ? "ADMIN"
+      : role === "COUNSELOR" ? "COUNSELOR_LEAD"
+        : role === "COUNSELOR_LEAD" ? "COUNSELOR"
+          : null;
 
 /** 상담사 워크스페이스(#/counsel) 접근 가능 역할 — 담당자(행정)는 절대 불가 */
 export const isCounselSide = (role: AdminRole): boolean =>
@@ -67,11 +78,13 @@ export const STATUS_LABELS: Record<AccountStatus, string> = {
 // ── 권한 매트릭스 — 섹션 키 → 접근 가능한 역할 ──
 // 관리자 화면(#/admin)은 담당자(행정)·마스터 전용. 상담사 계열은 #/counsel만.
 export const SECTION_ROLES: Record<string, AdminRole[]> = {
-  overview: ["MASTER", "ADMIN"],
-  students: ["MASTER", "ADMIN"],
-  recommend: ["MASTER", "ADMIN"],
-  download: ["MASTER", "ADMIN"],
-  accounts: ["MASTER"],
+  overview: ["MASTER", "ADMIN_LEAD", "ADMIN"],
+  students: ["MASTER", "ADMIN_LEAD", "ADMIN"],
+  recommend: ["MASTER", "ADMIN_LEAD", "ADMIN"],
+  download: ["MASTER", "ADMIN_LEAD", "ADMIN"],
+  // 담당자 계정 관리 — 마스터가 임명한 담당자 관리자도 승인·관리 가능 (2026-09-03,
+  // 상담사 관리자(counselAccounts)와 대칭. 계정 직접 등록은 Rules상 마스터 전용 유지)
+  accounts: ["MASTER", "ADMIN_LEAD"],
   // 상담사 워크스페이스(#/counsel) 섹션
   counselStudents: ["MASTER", "COUNSELOR_LEAD", "COUNSELOR"],
   counselAgencies: ["MASTER", "COUNSELOR_LEAD", "COUNSELOR"], // 연계기관·취업처 등록부 (공유 자원)
@@ -553,8 +566,8 @@ export function setAccountRole(id: string, role: AdminRole): AdminAccount[] {
   return accounts;
 }
 
-/** 목표 역할(COUNSELOR/COUNSELOR_LEAD)을 명시적으로 기록 */
-export async function setStaffLeadCloud(uid: string, role: "COUNSELOR" | "COUNSELOR_LEAD"): Promise<boolean> {
+/** 임명·해제의 목표 역할을 명시적으로 기록 (상담사↔상담사 관리자 / 담당자↔담당자 관리자) */
+export async function setStaffLeadCloud(uid: string, role: AdminRole): Promise<boolean> {
   try {
     await updateDoc(doc(getDb(), COL.staff, uid), { role });
     return true;
@@ -576,11 +589,12 @@ export async function removeStaffCloud(uid: string): Promise<boolean> {
 
 /** 상담사 ↔ 상담사 관리자 역할 전환 (마스터 전용 — 화면단에서 권한 확인 후 호출) */
 export function toggleCounselorLead(id: string): AdminAccount[] {
-  const accounts = loadAccounts().map((a) =>
-    a.id === id && (a.role === "COUNSELOR" || a.role === "COUNSELOR_LEAD")
-      ? { ...a, role: (a.role === "COUNSELOR" ? "COUNSELOR_LEAD" : "COUNSELOR") as AdminRole }
-      : a
-  );
+  // (2026-09-03) 담당자 ↔ 담당자 관리자도 같은 방식으로 임명·해제 — leadCounterpart로 일반화
+  const accounts = loadAccounts().map((a) => {
+    if (a.id !== id) return a;
+    const next = leadCounterpart(a.role);
+    return next ? { ...a, role: next } : a;
+  });
   saveAccounts(accounts);
   return accounts;
 }
