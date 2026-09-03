@@ -213,14 +213,17 @@ export type RecoSaveOutcome = { result: RecoPushResult | "CONFLICT"; remote?: Re
  * 트랜잭션 안에서 **원격 최신본을 먼저 읽어** 편집 시작 시점(baseUpdatedAt)과 비교한다:
  * 그 사이 누군가 같은 활동을 바꿨으면 덮어쓰지 않고 CONFLICT를 반환해 화면이 알린다
  * (§7.2.1-1 트랜잭션 병합 원칙 — 2026-09-02 점검 [높음-2] 수정).
- * baseUpdatedAt이 undefined면 신규 등록 의도이므로 기존 문서가 있을 때 CONFLICT.
+ * isNew(신규 등록 폼)면 기존 문서가 있을 때 CONFLICT. 수정·ON/OFF는 baseUpdatedAt과 원격을 비교한다.
+ * (2026-09-03 점검 A9) "신규 여부"를 baseUpdatedAt 결측으로 추정하지 않는다 — updated_at이 없는
+ * 오버라이드(콘솔 수기 문서)를 수정·ON/OFF하면 항상 신규로 오인돼 CONFLICT가 났고, "최신 내용
+ * 불러오기"로도 풀리지 않았다. 원격에 updated_at이 없으면 비교할 기준이 없으므로 그대로 쓴다.
  */
 export async function saveRecoActivity(
   activity: RecoActivity,
   editor: string,
-  baseUpdatedAt?: string,
-  allowRevive = false
+  opts: { isNew: boolean; baseUpdatedAt?: string }
 ): Promise<RecoSaveOutcome> {
+  const { isNew, baseUpdatedAt } = opts;
   const docData: RecoOverride = {
     ...activity,
     deleted: false, // 삭제됐던 코드의 재등록은 명시적 관리자 행동이므로 되살림 허용
@@ -244,13 +247,12 @@ export async function saveRecoActivity(
       const snap = await tx.get(ref);
       const remote = snap.exists() ? (snap.data() as RecoOverride) : null;
       // 신규 등록인데 이미 문서가 있음(다른 관리자가 선점, 또는 과거 삭제분) → 덮어쓰지 않는다
-      if (!baseUpdatedAt && remote && !remote.deleted) return remote;
-      // 삭제된 활동은 baseUpdatedAt 없는 경로(ON/OFF 토글 등)로 조용히 되살아나면 안 된다.
-      // 되살리기는 "신규 등록" 폼에서 같은 코드를 명시적으로 다시 입력할 때만 허용
-      // (allowRevive) — 2026-09-02 점검 CON-07.
-      if (remote && remote.deleted && !allowRevive) return remote;
+      if (isNew && remote && !remote.deleted) return remote;
+      // 삭제된 활동은 수정·ON/OFF 경로로 조용히 되살아나면 안 된다. 되살리기는 "신규 등록" 폼에서
+      // 같은 코드를 명시적으로 다시 입력할 때만 허용 — 2026-09-02 점검 CON-07.
+      if (remote && remote.deleted && !isNew) return remote;
       // 수정인데 내가 읽은 이후 원격이 바뀜 → 남의 수정을 지우지 않는다
-      if (baseUpdatedAt && remote && remote.updated_at && remote.updated_at !== baseUpdatedAt) return remote;
+      if (!isNew && remote && remote.updated_at && remote.updated_at !== baseUpdatedAt) return remote;
       tx.set(ref, docData);
       return null;
     });

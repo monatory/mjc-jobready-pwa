@@ -4,6 +4,60 @@
 > 이 파일은 "언제 무엇을 왜 했는지"의 시간순 이력만 담는다.
 
 ---
+## 2026-09-03 (2차) — 점검 잔여 결함 13건 수정 (A1·C2 + 낮음 11건) · 규칙 게시 · 문서 정합
+
+사용자 지시 "MD 확인 → 다음 작업 목록화 → 진행". 09-02 역할별 점검(`docs/점검보고서_2026-09-02_역할별_전과정.md`)
+에서 미수정으로 남아 있던 중간 2건과 소규모 낮음 11건을 한 커밋으로 처리했다. 미승인(PENDING) 계정은
+"그냥 지워도 된다"는 사용자 결정 — 단, 이 세션의 자동 실행 권한으로는 Firestore 조회·삭제 스크립트가
+차단돼 아래 "남은 것"으로 넘김.
+
+### 중간
+- **A1 학번 교정 권한** (`StudentsPanel.tsx`, `responsesSource.ts`): 학번 변경은 상담 기록(`ready_outreach`)을
+  함께 옮겨야 하는데 그 컬렉션은 상담사 계열만 쓸 수 있어, 담당자(행정)가 학번을 바꾸면 기록이 옛 학번에
+  고아로 남고 "항상 실패" 경고가 났다. 담당자는 학번 칸 readOnly(성명·학과·학년·연락처만 교정),
+  `updateStudentProfile(rec, patch, { canMoveId })`로 2중 가드. 학번 검증도 규칙과 동일 정규식으로.
+- **C2 관리자 자기 계정 잠금** (`Accounts.tsx`, `firestore.rules`): 상담사/담당자 관리자가 자기 행을
+  비활성·삭제할 수 있었다(라이브 실증). 본인 행은 "내 계정"으로 버튼 비노출 + 규칙 LEAD 분기에
+  `request.auth.uid != uid`. **`firebase deploy --only firestore:rules` 게시 완료**.
+
+### 낮음 (11건)
+- S1 결과지 `profileOk`를 규칙과 동일 조건(학번 영숫자 4~20·성명 1~30)으로 — 검증 안 거친 자동저장값 재제출 시
+  "네트워크 확인" 오안내·영구 실패 차단, NO_PROFILE 안내에 "설문으로 돌아가기" 버튼
+- S2 응답 문서에 `consent:{at, terms_version}` 저장 (`sessionState.setConsent`가 최초 동의 시각 기록,
+  `CONSENT_TERMS_VERSION="2026-09-03"`) — CSV 정보열람동의 컬럼에 일시 병기, 구버전은 "동의"
+- S3 `saveResponseToCloud` 결과에 `DENIED`(permission-denied) 분리 — 결과지에 "학교 시스템이 제출을
+  받지 않았습니다" 배너(설문 확인 버튼) — 네트워크 실패와 구분
+- A4 관리자 연락처 교정 하이픈 정규화 — `sessionState.normalizePhone` 신설, 학생 설문 제출과 공용
+- A5 CSV 파일명 날짜 `todayStr()`(KST) — 4곳 UTC slice 제거
+- A8 `ready_staff` 결측 필드(created_at 등) 방어 — 목록 throw → 로컬 폴백·백지 방지
+- A9 `saveRecoActivity(activity, editor, { isNew, baseUpdatedAt })` — 신규 여부를 baseUpdatedAt 결측으로
+  추정하지 않음. updated_at 없는 오버라이드 수정·ON/OFF가 영구 CONFLICT 나던 문제
+- A12 조회 중(LOADING)·실패(ERROR) 상태에서 다운로드 버튼 6종 잠금 + 안내 문구
+- C3 성공 토스트 타이머가 뒤이은 FAIL 경고를 지우던 것 — `CounselRecord`·`AgencyManager` 타이머 교체
+- C10 기관 등록 클라우드 실패 시 로컬 저장 생략(유령 기관 방지) + 폼 유지·재시도 안내
+- C11 상담 카드 미저장 입력 시 모달 닫기 확인(`onDirtyChange` → `closeDetail` confirm)
+
+### 문서
+- CLAUDE.md: §6.1 정보 수정(학번 변경 상담사 계열 한정), §7.2 C2 규칙·consent 필드, §5·§8 검증 수 76/19,
+  §8·§9 "서버 전송 없는 프로토타입" 폐기 전제 정정(DOC-02)
+- 점검보고서_2026-09-02_역할별_전과정.md §4.1 처리 현황 추기 (상위 폴더 사본 동기화)
+
+### 검증
+validate **76** · 회귀 **19** · strict build 통과. 브라우저(dev 5174, `firebase.ts` 임시 로컬 모드 → `git checkout`
+원복): 상담사 관리자 세션에서 계정 목록 본인 행 "내 계정" 표시·타 행 버튼 정상, created_at 빈 계정 렌더 OK,
+상담 카드 메모 입력 후 바깥 클릭 → 확인창(취소 시 유지·확인 시 닫힘), 미입력 상태는 확인 없이 닫힘. 콘솔 에러 0.
+규칙 컴파일·게시 성공.
+
+### 남은 것
+- [ ] **Firestore 미승인(PENDING) 계정 삭제** — 사용자 결정 "그냥 지워도 됨". 이 세션은 자동 실행 권한
+  분류기가 Firestore 조회 스크립트를 차단해 미수행. 라이브 마스터 로그인 → 계정 관리 화면에서 승인 대기
+  행 "삭제"가 가장 빠름(DELETED tombstone). 또는 `firebase firestore:delete ready_staff/<uid>`
+- [ ] 테스트 응답·계정·기관 정리, 라이브 마스터 실확인 4종(이월)
+- [ ] 낮음 잔여 9건: S5·S6·S8·S9·A10/C12·A11/C8·A14·C4·C5·C7·C9 (UI·접근성·동시성 계열)
+- [ ] 링크북 잡카페 주소 재공개 ↔ CLAUDE.md §6.4 "히든 페이지" 서술 — 개정 또는 재비공개 센터 판단 (오전 세션 이월)
+
+---
+
 
 ## 2026-09-03 — 모바일 반응형·설문 안내·계정 체계 수정 (라이브 결함 6건, 전부 배포 완료)
 

@@ -7,7 +7,7 @@ import { signInAnonymously } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { CLOUD_ENABLED, COL, SEMESTER, getStudentAuth, getStudentDb, authReadyFor } from "./firebase";
 import { surveyItems, diagnosticBank, levelRules } from "./dataLoader";
-import type { StudentProfile, CertEntry } from "./sessionState";
+import { getConsentInfo, type StudentProfile, type CertEntry, type ConsentInfo } from "./sessionState";
 
 export interface ResponsePayload {
   profile: StudentProfile;
@@ -19,9 +19,12 @@ export interface ResponsePayload {
   /** 결과 시점에 노출된 추천활동 코드 스냅샷 (§7.1 studentRecommendations) — 활성기간이
    *  지나도 "그때 추천했던 활동"이 명단·CSV에서 사라지지 않도록 저장 (감사 P3-11) */
   recommendations?: string[];
+  /** 개인정보 동의 시각·고지문 버전 — 명세 §7.2 "별도 Consent 값". 2026-09-03 이후 응답만 (점검 S2) */
+  consent?: ConsentInfo;
 }
 
-export type SaveOutcome = "OK" | "FAIL" | "OFF";
+/** DENIED = 서버 규칙 거부(permission-denied) — 재시도해도 같은 결과라 네트워크 안내와 구분한다 (점검 S3) */
+export type SaveOutcome = "OK" | "FAIL" | "DENIED" | "OFF";
 
 /** 오프라인·불안정 네트워크에서 setDoc이 무기한 대기하며 "제출 중…"에 고착되는 것 방지 (감사 S2-01) */
 const SAVE_TIMEOUT_MS = 15000;
@@ -49,9 +52,11 @@ export async function saveResponseToCloud(payload: ResponsePayload): Promise<Sav
       phone: payload.profile.phone.trim(),
     };
     const docId = `${SEMESTER}_${studentId}`;
+    const consent = getConsentInfo(); // Firestore는 undefined 값을 거부하므로 있을 때만 필드 추가
     await withTimeout(
       setDoc(doc(getStudentDb(), COL.responses, docId), {
         ...payload,
+        ...(consent ? { consent } : {}),
         profile: cleanProfile,
         semester: SEMESTER,
         auth_uid: auth.currentUser!.uid,
@@ -64,7 +69,9 @@ export async function saveResponseToCloud(payload: ResponsePayload): Promise<Sav
       })
     );
     return "OK";
-  } catch {
-    return "FAIL"; // 오프라인·규칙 거부·타임아웃 — 결과지가 실패 배너 + 재시도 버튼 표시 (조용한 유실 금지)
+  } catch (e) {
+    // 규칙 거부는 재시도로 풀리지 않는다(학번 형식·문서키 불일치 등) — 네트워크와 다른 안내가 필요
+    if ((e as { code?: string })?.code === "permission-denied") return "DENIED";
+    return "FAIL"; // 오프라인·타임아웃 — 결과지가 실패 배너 + 재시도 버튼 표시 (조용한 유실 금지)
   }
 }

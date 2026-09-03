@@ -23,14 +23,27 @@ export function gradeLabel(g: string | undefined): string {
   return `${g}학년`;
 }
 
+/** 휴대전화 표기 통일 — 숫자만 추려 "010-1234-5678" 하이픈 형식으로. 10자리 미만(형식 불명)은 트림만.
+ *  학생 설문 제출과 관리자 연락처 교정이 같은 규칙을 쓴다 — 한쪽만 정규화하면 명단·CSV에 두 형식이
+ *  섞이고 Excel이 하이픈 없는 값을 숫자로 읽어 앞 0을 지운다 (2026-09-02 점검 A4). */
+export function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 10 ? `${digits.slice(0, 3)}-${digits.slice(3, -4)}-${digits.slice(-4)}` : raw.trim();
+}
+
 export interface CertEntry {
   cert_name: string;
   category?: string; // OA | MAJOR | LANG | DRIVER | ETC — 상담사 활용 분류 (survey_items.certification_entry.category_values)
   status: "OWNED" | "PREPARING" | "TARGET";
 }
 
+// 개인정보 고지문 버전 — Start.tsx 고지표(수집 항목·목적·기간·제공·관리 부서) 문구를 바꾸면 날짜를 갱신한다.
+// 응답 문서의 consent.terms_version으로 저장돼 "어느 고지문에 동의했는지" 추적 (명세 §7.2 별도 Consent 값)
+export const CONSENT_TERMS_VERSION = "2026-09-03";
+
 const KEYS = {
   consent: "mjc_ready_consent",
+  consentAt: "mjc_ready_consent_at", // 최초 동의 시각·고지문 버전 (점검 S2)
   profile: "mjc_ready_profile",
   survey: "mjc_ready_survey",
   unscored: "mjc_ready_unscored",
@@ -56,8 +69,21 @@ function write(key: string, value: unknown): void {
   }
 }
 
-export const setConsent = (v: boolean) => write(KEYS.consent, v);
+export interface ConsentInfo {
+  at: string; // ISO 일시 — 최초 동의 시각 (같은 세션에서 다시 눌러도 유지)
+  terms_version: string;
+}
+export const setConsent = (v: boolean) => {
+  write(KEYS.consent, v);
+  if (v) {
+    if (!read<ConsentInfo>(KEYS.consentAt))
+      write(KEYS.consentAt, { at: new Date().toISOString(), terms_version: CONSENT_TERMS_VERSION });
+  } else {
+    sessionStorage.removeItem(KEYS.consentAt);
+  }
+};
 export const getConsent = () => read<boolean>(KEYS.consent) === true;
+export const getConsentInfo = () => read<ConsentInfo>(KEYS.consentAt);
 
 export const setProfile = (p: StudentProfile) => write(KEYS.profile, p);
 export const getProfile = () => read<StudentProfile>(KEYS.profile);

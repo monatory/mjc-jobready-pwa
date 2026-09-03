@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [session, setSession] = useState<AdminSession | null>(getSession);
   // 로그인 게이트 통과 후에만 실명 응답을 조회 (점검 SEC-02)
   const { students, source, skipped } = useStudents(Boolean(session)); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 P3-04)
+  const dataReady = source === "CLOUD" || source === "MOCK"; // 조회 중·실패면 다운로드 잠금 (점검 A12)
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
   const [folded, toggleFold] = useSidebarFold();
@@ -298,10 +299,15 @@ export default function Dashboard() {
                 기본 정보·설문 전체 응답·3대 지표·Level·진단 영역점수·보완영역·자격증(상태별 요약)·추천활동을
                 학생 1명당 1행으로 담은 단일 시트입니다.
               </p>
-              <button className="btn btn--primary" onClick={() => exportIntegrated(periodStudents)}>
+              {!dataReady && (
+                <p className="muted small">
+                  {source === "LOADING" ? "학생 응답을 불러오는 중입니다…" : "⚠ 학생 응답 조회에 실패해 내려받을 수 없습니다 — 새로고침 후 다시 시도해 주세요."}
+                </p>
+              )}
+              <button className="btn btn--primary" disabled={!dataReady} onClick={() => exportIntegrated(periodStudents)}>
                 통합 CSV (실명)
               </button>
-              <button className="btn btn--ghost" onClick={() => exportIntegratedForResearch(periodStudents)}>
+              <button className="btn btn--ghost" disabled={!dataReady} onClick={() => exportIntegratedForResearch(periodStudents)}>
                 통합 CSV (연구용 익명)
               </button>
             </div>
@@ -315,10 +321,10 @@ export default function Dashboard() {
                 {sheetKeys.map((k) => (
                   <div className="card dl-card" key={k}>
                     <strong>{k}</strong>
-                    <button className="btn btn--primary" onClick={() => exportSheet(k, periodStudents)}>
+                    <button className="btn btn--primary" disabled={!dataReady} onClick={() => exportSheet(k, periodStudents)}>
                       운영용 CSV (실명)
                     </button>
-                    <button className="btn btn--ghost" onClick={() => exportSheetForResearch(k, periodStudents)}>
+                    <button className="btn btn--ghost" disabled={!dataReady} onClick={() => exportSheetForResearch(k, periodStudents)}>
                       연구용 CSV (익명)
                     </button>
                   </div>

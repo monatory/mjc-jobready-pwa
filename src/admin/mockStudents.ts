@@ -29,6 +29,7 @@ export interface StudentRecord {
   weak: WeakArea[];
   recs: RecommendationActivity[];
   completed_at: string;
+  consent_at?: string; // 개인정보 동의 시각 (2026-09-03 이후 응답만 — 구버전·mock은 없음)
 }
 
 // 시드 고정 의사난수

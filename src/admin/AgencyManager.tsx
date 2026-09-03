@@ -1,6 +1,6 @@
 // 연계기관·취업처 관리 — 상담사 워크스페이스 전용 (2026-08-30 사용자 요구).
 // 외부기관 연계 시 참조하는 공유 등록부: 기관명·연락처·담당자·사업명·비고.
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import {
   loadAgencies,
   addAgency,
@@ -20,15 +20,17 @@ export default function AgencyManager() {
   const [typeFilter, setTypeFilter] = useState<"" | AgencyType>("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const msgTimer = useRef<number | undefined>(undefined);
 
   const visible = agencies.filter((a) => !typeFilter || a.type === typeFilter);
 
   // 공유 반영 실패는 반드시 표시 — 다른 상담사에게 안 보이는 "유령 등록" 방지 (감사 C4-12)
-  const showResult = (result: "OK" | "FAIL" | "LOCAL", okMsg: string) => {
-    if (result === "FAIL")
-      setMsg({ text: "⚠ 공유 저장소 반영 실패 — 이 브라우저에만 저장됐습니다. 네트워크 확인 후 다시 시도해 주세요.", error: true });
+  // 이전 성공 토스트의 타이머가 뒤이어 온 실패 경고를 1.5초 만에 지우던 문제 — 타이머를 갈아끼운다 (점검 C3)
+  const showResult = (result: "OK" | "FAIL" | "LOCAL", okMsg: string, failMsg: string) => {
+    if (result === "FAIL") setMsg({ text: failMsg, error: true });
     else setMsg({ text: `${okMsg} ✓`, error: false });
-    window.setTimeout(() => setMsg(null), result === "FAIL" ? 5000 : 1500);
+    window.clearTimeout(msgTimer.current);
+    msgTimer.current = window.setTimeout(() => setMsg(null), result === "FAIL" ? 5000 : 1500);
   };
 
   const submit = (e: FormEvent) => {
@@ -38,7 +40,15 @@ export default function AgencyManager() {
     void (editId ? updateAgency(editId, form) : addAgency(form)).then(({ list, result }) => {
       setBusy(false);
       setAgencies(list);
-      showResult(result, editId ? "기관 정보 수정됨" : "기관 등록됨");
+      showResult(
+        result,
+        editId ? "기관 정보 수정됨" : "기관 등록됨",
+        editId
+          ? "⚠ 공유 저장소 반영 실패 — 이 브라우저에만 수정됐습니다. 네트워크 확인 후 다시 저장해 주세요."
+          : "⚠ 공유 저장소 반영 실패 — 등록되지 않았습니다. 네트워크 확인 후 다시 '기관 등록'을 눌러 주세요."
+      );
+      // 등록 실패는 아무 데도 저장되지 않으므로 폼을 비우지 않는다 — 입력을 지키고 재시도 (점검 C10)
+      if (result === "FAIL" && !editId) return;
       setEditId(null);
       setForm(EMPTY);
     });
@@ -145,7 +155,7 @@ export default function AgencyManager() {
                         void removeAgency(a.id).then(({ list, result }) => {
                           setBusy(false);
                           setAgencies(list);
-                          showResult(result, "기관 삭제됨");
+                          showResult(result, "기관 삭제됨", "⚠ 공유 저장소 반영 실패 — 이 브라우저에서만 지워졌습니다. 네트워크 확인 후 다시 시도해 주세요.");
                         });
                       }}
                     >

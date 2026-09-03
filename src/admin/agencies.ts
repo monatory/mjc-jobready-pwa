@@ -56,8 +56,12 @@ export async function addAgency(
     id: `ag_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`,
     created_at: new Date().toISOString(),
   };
-  list.push(agency);
   const result = await pushCloud(agency);
+  // 공유 반영에 실패한 등록은 로컬에도 남기지 않는다 — 남기면 이 브라우저의 연계 select에는 뜨지만
+  // 다른 상담사에게는 "(삭제된 기관)"으로 보이는 유령 기관이 된다 (2026-09-02 점검 C10).
+  // 호출부는 폼 내용을 유지해 다시 시도할 수 있게 한다.
+  if (result === "FAIL") return { list, result };
+  list.push(agency);
   return { list: save(list), result };
 }
 

@@ -14,6 +14,7 @@ import {
   setUnscored,
   setCerts,
   GRADE_PATTERN,
+  normalizePhone,
   type CertEntry,
 } from "../lib/sessionState";
 
@@ -83,15 +84,12 @@ export default function Survey() {
     }
     // 최종 저장본은 트림·전화 정규화 적용 — 문서키(트림 학번)와 payload의 불일치 방지 (감사 S2-04)
     // 전화는 하이픈 형식으로 통일 — Excel에서 숫자로 읽혀 앞 0이 사라지는 손상 방지 (감사 P5-11)
-    const digits = profile.phone.replace(/\D/g, "");
-    const formattedPhone =
-      digits.length >= 10 ? `${digits.slice(0, 3)}-${digits.slice(3, -4)}-${digits.slice(-4)}` : profile.phone.trim();
     setProfile({
       ...profile,
       student_id: profile.student_id.trim(),
       name: profile.name.trim(),
       dept: profile.dept.trim(),
-      phone: formattedPhone,
+      phone: normalizePhone(profile.phone), // 관리자 교정과 같은 규칙 (sessionState.normalizePhone)
     });
     setSurvey(answers);
     // 조건부 문항(visible_if)은 상위 응답 변경으로 노출 조건이 깨지면 저장에서 제외 — 원자료 오염 방지

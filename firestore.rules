@@ -144,16 +144,23 @@ service cloud.firestore {
         && (request.auth.uid == uid || isActiveStaff());
       // 승인·상태 변경: 마스터 전체 / 상담사 관리자는 상담사 계정만 / 담당자 관리자는 담당자
       // 계정만 (역할 승격·구분 이동은 어느 쪽이든 마스터 전용 — role 불변 조건으로 강제)
+      // (2026-09-03 C2) 관리자(LEAD)는 **자기 자신의 문서**를 바꾸거나 지울 수 없다 — 본인을
+      // 비활성·삭제(tombstone)하면 잠긴 계정을 UI로 되살릴 사람이 마스터뿐이고, DELETED는
+      // 어느 목록에도 뜨지 않아 마스터도 화면으로는 복구할 수 없었다(라이브 실증).
       allow update: if isMaster()
         || (isLeadOrMaster()
+            && request.auth.uid != uid
             && resource.data.role in ['COUNSELOR', 'COUNSELOR_LEAD']
             && request.resource.data.role == resource.data.role)
         || (isAdminLeadOrMaster()
+            && request.auth.uid != uid
             && resource.data.role in ['ADMIN', 'ADMIN_LEAD']
             && request.resource.data.role == resource.data.role);
       allow delete: if isMaster()
-        || (isLeadOrMaster() && resource.data.role in ['COUNSELOR', 'COUNSELOR_LEAD'])
-        || (isAdminLeadOrMaster() && resource.data.role in ['ADMIN', 'ADMIN_LEAD']);
+        || (isLeadOrMaster() && request.auth.uid != uid
+            && resource.data.role in ['COUNSELOR', 'COUNSELOR_LEAD'])
+        || (isAdminLeadOrMaster() && request.auth.uid != uid
+            && resource.data.role in ['ADMIN', 'ADMIN_LEAD']);
     }
 
     // 그 외 경로 전부 차단

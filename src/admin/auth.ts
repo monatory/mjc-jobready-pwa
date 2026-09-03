@@ -418,14 +418,16 @@ export async function loadStaffCloud(): Promise<AdminAccount[] | null> {
     snap.forEach((d) => {
       const s = d.data() as StaffDoc;
       if (s.status === "DELETED") return; // 삭제 tombstone은 목록 비노출
+      // 콘솔에서 수기로 만든 문서는 필드가 빠질 수 있다 — created_at 결측 1건이 정렬·렌더에서
+      // throw 하면 목록 전체가 로컬 폴백·백지가 됐다 (2026-09-02 점검 A8). 결측은 빈 값으로 보정.
       list.push({
-        id: s.email,
-        name: s.name,
-        dept: s.dept,
+        id: s.email ?? "",
+        name: s.name ?? "",
+        dept: s.dept ?? "",
         role: s.role,
         status: s.status,
         pw_hash: "",
-        created_at: s.created_at,
+        created_at: s.created_at ?? "",
         approved_at: s.approved_at,
         uid: d.id,
       });

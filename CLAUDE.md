@@ -209,12 +209,12 @@ v0.1 수치는 "가설"이지만, 보정은 **운영 거버넌스(전문가 검�
 | `lib/weak_area.js` | `findWeakAreas` — 기준선 3.5 미만 영역 낮은 순 최대 2개 | ✅ 구현 |
 | `src/admin/csvExport.ts` | 통합 CSV(1 학생=1행) + 5개 Sheet 원자료 추출, 운영(실명)/연구(익명) 2종 — §6.3 | ✅ 구현 |
 | `src/lib/recoMaster.ts` | 추천활동 Master 저장소 — 시드 JSON + Firestore 오버라이드 병합, 형태 검증·tombstone(archived)·편집 충돌 감지 | ✅ 구현 (2026-09-01~02) |
-| `scripts/validate-data.mjs` | 데이터 무결성 검증 **53건** (배점 합계 100·Gate/신호/action_code 참조·템플릿·Excel 정의). CI 게이트 예정 | ✅ 구현 |
-| `tests/test_level_engine.js` | 회귀 **15건** — JAS 96 예시, L3/L4 분기, 경계값 68/73, timing Gate, 비취업 Route, 결정론, 보완영역·추천 연계 | ✅ 전부 통과 |
+| `scripts/validate-data.mjs` | 데이터 무결성 검증 **76건** (배점 합계 100·Gate/신호/action_code 참조·템플릿·Excel 정의). CI 게이트 예정 | ✅ 구현 |
+| `tests/test_level_engine.js` | 회귀 **19건** — JAS 96 예시, L3/L4 분기, 경계값 68/73, timing Gate, 비취업 Route, 결정론, 보완영역·추천 연계 | ✅ 전부 통과 |
 
 ```bash
-npm run validate:data   # 데이터 검증 53건
-npm test                # 엔진 회귀 15건
+npm run validate:data   # 데이터 검증 76건
+npm test                # 엔진 회귀 19건
 ```
 
 **엔진 구현 중 발견 — 센터 확정 필요(§12-13 추가)**: `level_rules.json`의 level1_fallback(취업 방향인데 JAS<30 + 자기이해 낮음 → L1)은
@@ -230,7 +230,7 @@ v0.1 배점 구조상 취업 방향 학생의 최저 Level은 2가 되며, 이�
 | Dashboard | 전체 응답자, Level 분포, 구직활성도, 상담희망, **연락 대기**, 취업시기, 학과별 현황(연락대기 열 포함) + **집계 기간**(검사 실시일 from~to, 2026-08-31 — KPI·학과별·데이터 다운로드 공통 적용) |
 | **연락·상담 관리 (아웃리치)** — `#/counsel` 전용 | **이 시스템의 존재 이유 반영 (2026-08-30)** — 학생이 먼저 오지 않으므로 상담사가 먼저 연락한다. 학생 클릭 시 **통합 상담 카드**(`CounselRecord.tsx`): ① 요약 스트립(상담희망·정부지원 의향·연락상태·외부연계·취업상태·상담 횟수·최근 메모 한눈에) ② 연락 기록(상태 5단계+메모) ③ **상담 회차 기록**(1·2회차… 누적, 날짜·내용·상담사, 삭제 가능)+최종 요약 ④ **외부기관 연계 파이프라인**(연계 희망→연계 완료→사후관리→종결, 등록부 기관 선택·연계일·메모) ⑤ **취업상태 등록**(구직중/취업+취업처/진학/창업 등). 명단: 연락처(tel:)·연락상태·외부연계·취업 배지 열 + **📞 연락 우선 큐** + **🔗 연계 사후관리 큐** + 상세 필터(연락 상태·외부연계 단계·취업상태). 저장은 `outreach.ts` 단일 스토어(merge, 처리자·일시 자동). **상담사 워크스페이스에서만 노출 — 담당자(행정) 화면·CSV에는 없음(§6.4)** |
 | **연계기관·취업처 관리** — `#/counsel` 전용 | 외부기관 등록부(`agencies.ts`+`AgencyManager.tsx`) — 구분(연계기관/취업처)·**기관명·연락처·담당자·사업명**·비고 등록·수정·삭제. 연계 기록의 기관 선택과 취업처 자동완성의 소스. 상담사 공유 자원 (2026-08-30) |
-| 대상자 필터 | Level, JAS, 학과, 학년 + **상세 필터**(2026-08-28 구현, 08-30 확장): 진로방향·상담희망·전공연계·본가지역·희망 취업 지역·희망직무 분야·희망시기·정부지원 의향·자격증 보유상태·자격 분류(OA/전공/어학/운전면허/기타). 프리셋 칩은 **복수 선택 AND 결합**(예: 취업희망+상담희망+정부지원). **필터 결과 CSV 다운로드**(운영용 실명/연구용 익명). (2026-08-31 추가) **실시일 기간** 필터 · **정렬 선택 5종**(최근 검사순 기본/JAS/희망시기/미연락 우선/외부연계 단계순 — 뒤 2종 워크스페이스 전용) · 명단 맨 앞 **실시일 컬럼** · 학생 상세 모달 **"✏ 정보 수정"**(학번·성명·학과·학년·연락처 오기입 교정 — 응답·판정·실시일 불변, 학번 변경 시 문서 키 이동, 실측 모드 전용) |
+| 대상자 필터 | Level, JAS, 학과, 학년 + **상세 필터**(2026-08-28 구현, 08-30 확장): 진로방향·상담희망·전공연계·본가지역·희망 취업 지역·희망직무 분야·희망시기·정부지원 의향·자격증 보유상태·자격 분류(OA/전공/어학/운전면허/기타). 프리셋 칩은 **복수 선택 AND 결합**(예: 취업희망+상담희망+정부지원). **필터 결과 CSV 다운로드**(운영용 실명/연구용 익명). (2026-08-31 추가) **실시일 기간** 필터 · **정렬 선택 5종**(최근 검사순 기본/JAS/희망시기/미연락 우선/외부연계 단계순 — 뒤 2종 워크스페이스 전용) · 명단 맨 앞 **실시일 컬럼** · 학생 상세 모달 **"✏ 정보 수정"**(학번·성명·학과·학년·연락처 오기입 교정 — 응답·판정·실시일 불변, 학번 변경 시 문서 키 이동, 실측 모드 전용 · **학번 변경은 상담사 계열 계정만** — 상담 기록 동반 이동 권한, 담당자는 학번 칸 잠금 2026-09-03 A1) |
 | 계정·권한 (2026-08-30) | 로그인 게이트 + **4역할 완전 분리**: 마스터(개발자) / 담당자(행정) / 상담사 관리자 / 상담사. 담당자는 `#/admin`(일반 관리+다운로드)만, 상담사 계열은 히든 워크스페이스 `#/counsel`만 — **담당자는 상담사 페이지·연락 기록에 접근 불가**. §6.4 참조 |
 | 학생 상세 | 설문 원응답, 자격증, 영역점수, Level 판정근거, 추천활동, 상담연계 상태 |
 | 추천활동 관리 | **등록·수정·삭제·ON/OFF 구현 (2026-09-01)** — 코드·활동명·담당·Level·취약영역·우선순위·활성기간·학생 노출 설명 편집. 저장소는 `src/lib/recoMaster.ts`: 시드(`data/recommendation_master.json`) + Firestore `ready_reco_master` 오버라이드 병합(문서키=코드, 삭제는 tombstone). 변경은 학생 결과지 추천(익명 세션 조회, 6초 타임아웃+시드 폴백)·관리자 명단에 공통 반영. 코드는 등록 후 수정 불가(판정·이력의 키) |
@@ -332,6 +332,10 @@ recommendationMaster/studentRecommendations/adminSettings)으로 설계했으나
   ready_reco_master 규칙을 Firebase CLI(`firebase deploy --only firestore:rules`, `firebase.json` 추가)로
   일괄 게시. REST 실측 8종 통과 — 타 기기 재응시 갱신 200 / 학번 위조 403 / 비인증·익명의 실명 데이터
   접근 403 / 익명의 추천 Master 읽기 200. 이후 규칙 변경 시 같은 명령으로 게시
+- **관리자 자기 계정 보호 (2026-09-03 C2, 게시 완료)**: `ready_staff` update/delete의 상담사·담당자 관리자(LEAD)
+  분기에 `request.auth.uid != uid` — 관리자가 본인을 비활성·삭제(tombstone)해 잠기는 경로 차단. 화면도 본인 행 버튼 비노출
+- **동의 값 별도 저장 (2026-09-03 S2)**: 응답 문서에 `consent: {at, terms_version}` — 최초 동의 시각과 고지문 버전
+  (`sessionState.CONSENT_TERMS_VERSION`, 고지 문구 개정 시 갱신). CSV 정보열람동의 컬럼에 일시 병기. 구버전 응답은 없음
 - **Auth 세션 3분리 (2026-08-31)**: 기본 앱(교직원 로그인) / `"student"` 보조 앱(학생 익명 제출 —
   관리자 로그아웃 무영향) / `"signup"` 보조 앱(가입 신청 — 현재 세션 안 갈아탐). `src/lib/firebase.ts`
 - **제출 실패는 보이게**: 결과지에 실패 배너+재시도 버튼, "제출 완료" 판단은 응답 스냅샷 비교
@@ -444,7 +448,7 @@ recommendationMaster/studentRecommendations/adminSettings)으로 설계했으나
 | 백엔드 | Firebase Firestore (asia-northeast3) | 〃. 단, **실명 데이터이므로 Auth 필수** — 시범부터 Anonymous Auth 이상 |
 | 판정 | 전부 클라이언트 순수 함수 (결정론) | AI API 의존 없음 |
 | 차트 | Recharts | 〃 |
-| 배포 | **개발기 GitHub Pages 가동 중 (2026-08-28)** → 본 운영 학내 도메인 | 저장소 `github.com/monatory/mjc-jobready-pwa` · 라이브 `https://monatory.github.io/mjc-jobready-pwa/` · main push 시 Actions 자동 배포(검증 53→테스트 15→빌드). 서버 전송 없는 프로토타입이라 공개 무해. ⚠ 실명 수집 시작 전 Security Rules·Auth 강화 선행 |
+| 배포 | **개발기 GitHub Pages 가동 중 (2026-08-28)** → 본 운영 학내 도메인 | 저장소 `github.com/monatory/mjc-jobready-pwa` · 라이브 `https://monatory.github.io/mjc-jobready-pwa/` · main push 시 Actions 자동 배포(검증 76→테스트 19→빌드). **2026-08-30부터 클라우드 모드** — 실명 응답이 Firestore로 제출되므로 게시된 Security Rules(§7.2)가 곧 보안 경계. 학생 인증 강화는 §12-11 |
 | PDF/인쇄 | `window.print()` + `@media print` | jsPDF 금지 (한글 폰트 회피, MJC-CAT §21) |
 | 코드 컨벤션 | camelCase, 한국어 주석, JSON snake_case, 코드 상수 SNAKE_CASE | 〃 |
 | CI | `npm run build`(tsc -b 포함) + validate-data + 회귀 테스트 통과 후에만 push | MJC-CAT §17.2 사고 회고 승계 |
@@ -470,7 +474,7 @@ STEP 3 / 3  진로준비 진단    (#/diagnostic) 27문항 × 5점 척도, 화�
 
 - 진입 가드: 동의 없이 /survey 진입 → STEP 1로, 설문 없이 /diagnostic 진입 → STEP 2로, 데이터 없이 /result → 빈 안내 카드
 - sessionStorage 키: `mjc_ready_consent / profile / survey / unscored / certs / diag` — `clearAll()` 일괄 정리, `getResumeState()` 복귀 판정
-- 시범 프로토타입 단계: **서버 전송 없음**(브라우저에만 저장) — Firestore 연동은 STEP 3(인증 방식 확정) 후
+- ~~서버 전송 없음~~ → **2026-08-30부터 클라우드 모드**: 결과지 도달 시 `ready_responses`에 자동 제출(§7.1), 실패 시 배너+재시도, 규칙 거부(DENIED)는 별도 안내. 클라우드 미설정 빌드에서만 브라우저 저장 (DOC-02 정정 2026-09-03)
 - 실행: `npm run dev` (5174) · 검증: `npm run build`(tsc 포함) + `npm run validate:data` + `npm test`
 
 ## 10. 타당성 확보 절차 (통계적 + 업무적)

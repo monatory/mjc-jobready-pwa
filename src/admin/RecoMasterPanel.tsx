@@ -205,12 +205,9 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
       active: form.active,
     };
     setBusy(true);
-    const { result } = await saveRecoActivity(
-      activity,
-      editor,
-      editing === "NEW" ? undefined : baseUpdatedAt,
-      editing === "NEW" // 삭제된 코드의 되살리기는 신규 등록 폼에서만 허용 (점검 CON-07)
-    );
+    // 신규 여부를 명시 — 삭제된 코드의 되살리기는 신규 등록 폼에서만 허용 (점검 CON-07),
+    // updated_at 없는 오버라이드의 수정이 신규로 오인되지 않게 (점검 A9)
+    const { result } = await saveRecoActivity(activity, editor, { isNew: editing === "NEW", baseUpdatedAt });
     setBusy(false);
     if (result === "FAIL") {
       setSaveFail(`저장 실패 — ${activity.name}. 네트워크·로그인·규칙 게시 상태를 확인한 뒤 다시 시도해 주세요.`);
@@ -232,11 +229,10 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
   const toggleActive = async (a: RecoActivity) => {
     if (busy) return; // 연타 시 stale 값으로 두 번 쓰는 것 방지 (점검 L-1)
     setBusy(true);
-    const { result } = await saveRecoActivity(
-      { ...a, active: !a.active },
-      editor,
-      updatedAtOf(a.recommendation_code)
-    );
+    const { result } = await saveRecoActivity({ ...a, active: !a.active }, editor, {
+      isNew: false,
+      baseUpdatedAt: updatedAtOf(a.recommendation_code),
+    });
     setBusy(false);
     if (result === "FAIL") setSaveFail(`ON/OFF 저장 실패 — ${a.name}. 다시 시도해 주세요.`);
     else if (result === "CONFLICT") { setConflicted(true); setSaveFail(conflictMsg(a.name)); }

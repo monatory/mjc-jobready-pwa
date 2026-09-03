@@ -5,7 +5,7 @@
 //  ④ 외부기관 연계: 희망 → 연계 완료 → 사후관리 → 종결 (등록부에서 기관 선택)
 //  ⑤ 취업상태 등록: 구직 중/취업(취업처)/진학/창업…
 // 담당자(행정)에게는 이 컴포넌트 전체가 렌더되지 않는다 (§6.4).
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { StudentRecord } from "./mockStudents";
 import { surveyAnswerLabel } from "./mockStudents";
 import {
@@ -34,12 +34,15 @@ export default function CounselRecord({
   by,
   agencies,
   onSave,
+  onDirtyChange,
 }: {
   student: StudentRecord;
   entry: OutreachEntry | undefined;
   by: string;
   agencies: Agency[];
   onSave: (next: Record<string, OutreachEntry>) => void;
+  /** 저장하지 않은 입력이 있는지 — 부모 모달이 닫기 전에 확인하는 데 쓴다 (점검 C11) */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const studentId = student.student_id;
   // ── 연락 기록 ──
@@ -61,11 +64,34 @@ export default function CounselRecord({
   const [empDate, setEmpDate] = useState(entry?.employment?.date ?? "");
   const [empNote, setEmpNote] = useState(entry?.employment?.note ?? "");
 
+  // 저장하지 않은 입력 감지 — 모달 바깥 클릭으로 메모·요약이 조용히 사라지던 문제 (점검 C11).
+  // 저장 후에는 entry가 갱신되어 화면 값과 같아지므로 자연히 false가 된다.
+  const dirty =
+    status !== (entry?.status ?? "NONE") ||
+    memo !== (entry?.memo ?? "") ||
+    sessContent.trim() !== "" ||
+    finalSummary !== (entry?.final_summary ?? "") ||
+    refStage !== (entry?.referral?.stage ?? "NONE") ||
+    refAgency !== (entry?.referral?.agency_id ?? "") ||
+    refDate !== (entry?.referral?.referred_at ?? "") ||
+    refNote !== (entry?.referral?.note ?? "") ||
+    empStatus !== (entry?.employment?.status ?? "NONE") ||
+    employer !== (entry?.employment?.employer ?? "") ||
+    empDate !== (entry?.employment?.date ?? "") ||
+    empNote !== (entry?.employment?.note ?? "");
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]); // 언마운트 시 초기화
+
   const [savedMsg, setSavedMsg] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  // 이전 성공 토스트(1.5초)의 타이머가 뒤이어 온 실패 경고(5초)를 조기에 지우던 문제 — 타이머 교체 (점검 C3)
+  const flashTimer = useRef<number | undefined>(undefined);
   const flash = (text: string, error = false) => {
     setSavedMsg({ text, error });
-    window.setTimeout(() => setSavedMsg(null), error ? 5000 : 1500);
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setSavedMsg(null), error ? 5000 : 1500);
   };
 
   // 공유 저장 공통 경로 — 트랜잭션 병합 저장 + 실패를 반드시 표시 (감사 C4-02: "저장됨 ✓" 위장 금지)

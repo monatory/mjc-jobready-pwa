@@ -18,6 +18,7 @@ import {
   setStaffRoleCloud,
   setAccountRole,
   leadCounterpart,
+  getSession,
   ROLE_LABELS,
   STATUS_LABELS,
   type AdminAccount,
@@ -68,6 +69,10 @@ export default function Accounts({
 
   const visible = accounts.filter((a) => roles.includes(a.role));
   const pending = visible.filter((a) => a.status === "PENDING").length;
+  // 내 계정 행에는 비활성·삭제·구분 이동 버튼을 두지 않는다 — 관리자(LEAD)가 자기 계정을 잠그면
+  // UI로 되살릴 수단이 없다(2026-09-02 점검 C2, 라이브 실증). 서버 규칙도 같은 조건으로 거부한다.
+  const myId = (getSession()?.id ?? "").toLowerCase();
+  const isSelf = (a: AdminAccount) => a.id.toLowerCase() === myId;
 
   // 클라우드/로컬 공용 액션 디스패치 — 클라우드 실패는 반드시 표시 (감사 P3-10·C4-12),
   // 상태·역할은 토글이 아니라 화면이 계산한 "목표값"을 기록 (감사 F16: 동시 처리 시 의도 반전 방지)
@@ -242,10 +247,15 @@ export default function Accounts({
                 <td>
                   <span className={`acct-status acct-status--${a.status.toLowerCase()}`}>{STATUS_LABELS[a.status]}</span>
                 </td>
-                <td className="small">{a.created_at.slice(0, 10)}</td>
+                {/* created_at 결측(콘솔 수기 문서)이면 throw 대신 "—" (점검 A8) */}
+                <td className="small">{(a.created_at || "").slice(0, 10) || "—"}</td>
                 <td>
                   {a.role === "MASTER" ? (
                     <span className="muted small">내장 계정</span>
+                  ) : isSelf(a) ? (
+                    <span className="muted small" title="본인 계정은 여기서 변경할 수 없습니다 — 마스터에게 요청하세요">
+                      내 계정
+                    </span>
                   ) : (
                     <div className="acct-actions">
                       {a.status === "PENDING" && (

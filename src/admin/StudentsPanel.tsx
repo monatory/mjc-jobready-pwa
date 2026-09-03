@@ -24,7 +24,8 @@ import {
 } from "./outreach";
 import CounselRecord from "./CounselRecord";
 import { loadAgencies } from "./agencies";
-import { gradeLabel, GRADE_PATTERN } from "../lib/sessionState";
+import { gradeLabel, GRADE_PATTERN, normalizePhone } from "../lib/sessionState";
+import { isCounselSide } from "./auth";
 
 // 학생 정보 수정 폼의 학년 선택지 (졸업은 연도 입력 동반)
 const GRADE_OPTIONS: Array<[string, string]> = [
@@ -142,6 +143,7 @@ export default function StudentsPanel({
   showOutreach: boolean;
 }) {
   const { students, source } = useStudents(); // 실측(Firestore) 우선, 없으면 mock 미리보기
+  const dataReady = source === "CLOUD" || source === "MOCK"; // LOADING·ERROR면 다운로드 잠금
   const [presets, setPresets] = useState<Set<string>>(new Set());
   const [queueOnly, setQueueOnly] = useState(false);
   const [followupOnly, setFollowupOnly] = useState(false); // 🔗 외부연계 사후관리 큐
@@ -160,6 +162,18 @@ export default function StudentsPanel({
   const [editBusy, setEditBusy] = useState(false);
   const [editMsg, setEditMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [editForm, setEditForm] = useState({ student_id: "", name: "", dept: "", gradeSel: "", gradeYear: "", phone: "" });
+  // 학번 변경은 상담 기록(ready_outreach)을 새 학번으로 함께 옮겨야 하는데, 그 컬렉션은 상담사 계열만
+  // 쓸 수 있다. 담당자(행정)가 학번을 바꾸면 응답만 옮겨지고 상담 기록은 옛 학번에 고아로 남았다
+  // (2026-09-02 점검 A1). 담당자는 학번 칸을 잠그고 성명·학과·학년·연락처만 교정한다.
+  const canMoveId = isCounselSide(session.role);
+  // 상담 카드에 저장하지 않은 입력이 있으면 모달을 닫기 전에 확인한다 (점검 C11)
+  const [counselDirty, setCounselDirty] = useState(false);
+  const closeDetail = () => {
+    if ((editing || counselDirty) && !window.confirm("저장하지 않은 입력이 있습니다. 닫을까요?")) return;
+    setDetail(null);
+    setEditing(false);
+    setCounselDirty(false);
+  };
 
   const openEdit = (s: StudentRecord) => {
     const isGrad = s.grade.startsWith("졸업");
@@ -179,8 +193,10 @@ export default function StudentsPanel({
     const grade = editForm.gradeSel === "졸업" ? `졸업${editForm.gradeYear.trim()}` : editForm.gradeSel;
     const id = editForm.student_id.trim();
     // 검증 — Rules(validResponse)와 학생 화면의 조건에 맞춤. 구버전 학년 값은 무변경 시 허용
-    if (id.length < 4 || id.length > 20 || /\s/.test(id))
-      return setEditMsg({ text: "학번은 공백 없이 4~20자로 입력해 주세요.", ok: false });
+    if (id !== s.student_id && !canMoveId)
+      return setEditMsg({ text: "학번 변경은 상담사 계정(잡카페 워크스페이스)에서만 할 수 있습니다 — 상담 기록이 함께 이동해야 하기 때문입니다.", ok: false });
+    if (!/^[A-Za-z0-9]{4,20}$/.test(id))
+      return setEditMsg({ text: "학번은 영문·숫자 4~20자로 입력해 주세요 (공백·기호 불가).", ok: false });
     if (!editForm.name.trim() || editForm.name.trim().length > 30)
       return setEditMsg({ text: "성명을 확인해 주세요 (1~30자).", ok: false });
     if (!editForm.dept.trim()) return setEditMsg({ text: "학과를 입력해 주세요.", ok: false });
@@ -193,8 +209,9 @@ export default function StudentsPanel({
       return setEditMsg({ text: "휴대전화는 010-0000-0000 형식으로 입력해 주세요.", ok: false });
 
     setEditBusy(true);
-    const patch = { student_id: id, name: editForm.name.trim(), dept: editForm.dept.trim(), grade, phone: editForm.phone.trim() };
-    const r = await updateStudentProfile(s, patch);
+    // 연락처는 학생 제출과 같은 하이픈 형식으로 통일 (점검 A4 — 형식 혼재·Excel 앞 0 손실 방지)
+    const patch = { student_id: id, name: editForm.name.trim(), dept: editForm.dept.trim(), grade, phone: normalizePhone(editForm.phone) };
+    const r = await updateStudentProfile(s, patch, { canMoveId });
     setEditBusy(false);
     setEditMsg({ text: r.message, ok: r.ok });
     if (r.ok) {
@@ -408,13 +425,16 @@ export default function StudentsPanel({
           </select>
         </p>
         <div className="filter-result-bar__dl">
+          {/* 조회 중·실패 상태에서는 헤더만 있는 CSV가 나간다 — 버튼을 잠근다 (점검 A12) */}
           <button
             className="btn btn--primary btn--sm"
+            disabled={!dataReady}
+            title={dataReady ? undefined : "학생 응답을 불러온 뒤 내려받을 수 있습니다"}
             onClick={() => exportSheet("01_학생상태", filtered, { includeOutreach: showOutreach })}
           >
             필터 결과 CSV (운영용)
           </button>
-          <button className="btn btn--ghost btn--sm" onClick={() => exportSheetForResearch("01_학생상태", filtered)}>
+          <button className="btn btn--ghost btn--sm" disabled={!dataReady} onClick={() => exportSheetForResearch("01_학생상태", filtered)}>
             필터 결과 CSV (익명)
           </button>
         </div>
@@ -488,7 +508,7 @@ export default function StudentsPanel({
       </div>
 
       {detail && (
-        <div className="modal-backdrop" onClick={() => { setDetail(null); setEditing(false); }}>
+        <div className="modal-backdrop" onClick={closeDetail}>
           <div className="modal card admin-detail" onClick={(e) => e.stopPropagation()}>
             <div className="admin-detail__head">
               <div>
@@ -511,7 +531,7 @@ export default function StudentsPanel({
                 </span>
                 {detail.result.routeTag === "FURTHER_STUDY_STARTUP" && <span className="lv-badge">진학·창업 Route</span>}
               </div>
-              <button className="btn btn--ghost" onClick={() => { setDetail(null); setEditing(false); }}>✕ 닫기</button>
+              <button className="btn btn--ghost" onClick={closeDetail}>✕ 닫기</button>
             </div>
 
             {/* 학생 기본 정보 교정 — 학번·성명·학과·학년·연락처 (설문 응답·판정·실시일은 무변경) */}
@@ -520,8 +540,9 @@ export default function StudentsPanel({
                 <h4>학생 정보 수정 <span className="muted small">— 잘못 입력된 기본 정보만 교정합니다. 응답·판정 결과는 바뀌지 않습니다.</span></h4>
                 <div className="profile-edit__grid">
                   <label className="adv-filter__field">
-                    <span>학번</span>
-                    <input className="input" value={editForm.student_id}
+                    <span>학번{!canMoveId && <span className="muted small"> (상담사 계정에서만 변경)</span>}</span>
+                    <input className="input" value={editForm.student_id} readOnly={!canMoveId}
+                      title={canMoveId ? undefined : "학번 변경은 상담 기록이 함께 이동해야 하므로 상담사 계정에서만 가능합니다"}
                       onChange={(e) => setEditForm((f) => ({ ...f, student_id: e.target.value }))} />
                   </label>
                   <label className="adv-filter__field">
@@ -585,6 +606,7 @@ export default function StudentsPanel({
                 by={session.name}
                 agencies={loadAgencies()}
                 onSave={(next) => setOutreach(next)}
+                onDirtyChange={setCounselDirty}
               />
             )}
 

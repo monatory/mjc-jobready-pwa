@@ -119,9 +119,16 @@ export default function Result() {
     return { weak, recs };
   }, [evalResult, recoMaster]);
 
-  // 학번·성명이 빈 프로필은 서버 규칙(docId=="{학기}_{학번}", 학번 4~20자)에서 영구 403이라
-  // 재시도가 절대 성공하지 못한다. 제출을 시도하지 말고 NO_PROFILE 안내로 보낸다 (점검 STU-03).
-  const profileOk = Boolean(profile && profile.student_id.trim() && profile.name.trim());
+  // 서버 규칙(validResponse: 학번 영숫자 4~20자, 성명 1~30자, docId=="{학기}_{학번}")에 맞지 않는
+  // 프로필은 영구 403이라 재시도가 절대 성공하지 못한다. 제출을 시도하지 말고 NO_PROFILE 안내로
+  // 보낸다 (점검 STU-03). 조건은 규칙·설문 화면과 동일하게 — 결과지에서 뒤로 가 학번을 잘못 고친
+  // 뒤 "다음" 검증을 거치지 않고 돌아온 경우가 "네트워크 확인"으로 오안내되던 문제 (점검 S1).
+  const profileOk = Boolean(
+    profile &&
+      /^[A-Za-z0-9]{4,20}$/.test(profile.student_id.trim()) &&
+      profile.name.trim().length >= 1 &&
+      profile.name.trim().length <= 30
+  );
   const analysisReady = analysis !== null;
 
   const payload = useMemo<ResponsePayload | null>(() => {
@@ -145,7 +152,7 @@ export default function Result() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasData, evalResult, analysis, profileOk]);
   const serialized = useMemo(() => (payload ? JSON.stringify(payload) : ""), [payload]);
-  const [submitState, setSubmitState] = useState<"OFF" | "SAVING" | "DONE" | "FAIL" | "NO_PROFILE">(
+  const [submitState, setSubmitState] = useState<"OFF" | "SAVING" | "DONE" | "FAIL" | "DENIED" | "NO_PROFILE">(
     CLOUD_ENABLED ? "SAVING" : "OFF"
   );
   const [retryTick, setRetryTick] = useState(0);
@@ -173,7 +180,7 @@ export default function Result() {
         }
         setSubmitState("DONE");
       } else {
-        setSubmitState(outcome === "OFF" ? "OFF" : "FAIL");
+        setSubmitState(outcome === "OFF" ? "OFF" : outcome === "DENIED" ? "DENIED" : "FAIL");
       }
     });
     return () => {
@@ -345,10 +352,34 @@ export default function Result() {
             </button>
           </section>
         )}
+        {submitState === "DENIED" && (
+          <section className="card submit-fail">
+            <strong>⚠ 학교 시스템이 제출을 받지 않았습니다</strong>
+            <p>
+              네트워크 문제가 아니라 입력 내용이 제출 조건에 맞지 않을 때 나타납니다. 설문으로 돌아가
+              학번(영문·숫자 4~20자)과 성명을 확인한 뒤 다시 결과를 확인해 주세요. 반복되면 잡카페(본관 1층)에
+              문의해 주세요.
+            </p>
+            <div className="actions">
+              <button className="btn btn--primary" onClick={() => navigate("/survey")}>
+                설문으로 돌아가 확인하기
+              </button>
+              <button className="btn btn--ghost" onClick={() => setRetryTick((t) => t + 1)}>
+                다시 제출하기
+              </button>
+            </div>
+          </section>
+        )}
         {submitState === "NO_PROFILE" && (
           <section className="card submit-fail">
-            <strong>⚠ 학생 정보가 없어 제출할 수 없습니다</strong>
-            <p>기본 정보(학번·성명)가 유실되었습니다. "다시 진단하기"로 처음부터 진행해 주세요.</p>
+            <strong>⚠ 학생 정보가 없거나 형식이 맞지 않아 제출할 수 없습니다</strong>
+            <p>
+              학번은 영문·숫자 4~20자, 성명은 1~30자여야 합니다. 설문으로 돌아가 기본 정보를 확인해 주세요.
+              기본 정보가 아예 없다면 "다시 진단하기"로 처음부터 진행해 주세요.
+            </p>
+            <button className="btn btn--primary" onClick={() => navigate("/survey")}>
+              설문으로 돌아가 확인하기
+            </button>
           </section>
         )}
 

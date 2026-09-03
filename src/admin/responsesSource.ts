@@ -85,6 +85,7 @@ function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentR
     weak,
     recs,
     completed_at: raw.saved_at ?? "",
+    consent_at: raw.consent?.at ?? "", // 동의 시각 — 구버전(2026-09-03 이전) 응답은 없음
   };
 }
 
@@ -138,7 +139,8 @@ export function invalidateStudentsCache(): void {
  *     (상담 기록 이동은 상담사 계열 권한 필요 — 담당자 계정이면 응답만 이동하고 안내) */
 export async function updateStudentProfile(
   rec: StudentRecord,
-  patch: { student_id: string; name: string; dept: string; grade: string; phone: string }
+  patch: { student_id: string; name: string; dept: string; grade: string; phone: string },
+  opts: { canMoveId: boolean } = { canMoveId: true }
 ): Promise<{ ok: boolean; message: string }> {
   if (!CLOUD_ENABLED) return { ok: false, message: "미리보기 모드에서는 저장되지 않습니다." };
   try {
@@ -150,6 +152,11 @@ export async function updateStudentProfile(
     const oldId = `${sem}_${rec.student_id}`;
     const newStudentId = patch.student_id.trim();
     const newId = `${sem}_${newStudentId}`;
+    // (2026-09-03 점검 A1) 상담 기록(ready_outreach)은 상담사 계열만 쓸 수 있다. 담당자(행정)가
+    // 학번을 바꾸면 응답만 옮겨지고 상담 기록은 옛 학번 밑에 고아로 남아 "항상 실패" 경고가 났다.
+    // 화면(StudentsPanel)이 1차로 막고, 여기서도 한 번 더 거른다.
+    if (newId !== oldId && !opts.canMoveId)
+      return { ok: false, message: "학번 변경은 상담사 계정에서만 할 수 있습니다 — 상담 기록이 함께 이동해야 합니다." };
 
     const buildUpdated = (data: ResponsePayload & Record<string, unknown>) => ({
       ...data,
@@ -184,8 +191,8 @@ export async function updateStudentProfile(
       if (conflict === "DUP")
         return { ok: false, message: `학번 ${newStudentId}의 응답이 이미 있습니다 — 학번을 확인해 주세요.` };
 
-      // 상담 기록(ready_outreach) 키 이동 — 담당자(행정) 계정은 권한이 없어 실패할 수 있음 → 안내
-      // 대상 학번에 기록이 이미 있으면 **병합**한다. 예전에는 복사 없이 원본을 지워서
+      // 상담 기록(ready_outreach) 키 이동 — 위 가드로 상담사 계열만 여기 도달하므로 실패는 네트워크·
+      // 규칙 미게시 등 예외 상황뿐 → 안내. 대상 학번에 기록이 이미 있으면 **병합**한다. 예전에는 복사 없이 원본을 지워서
       // 옛 학번의 상담 이력(회차·연계·취업)이 통째로 사라졌다 (2026-09-02 점검 CNS-03/CON-05).
       let outreachResult: "MOVED" | "MERGED" | "NONE" | "FAIL" = "NONE";
       try {
@@ -228,7 +235,7 @@ export async function updateStudentProfile(
         MOVED: " (상담 기록도 새 학번으로 이동)",
         MERGED: " ⚠ 새 학번에 이미 상담 기록이 있어 **두 기록을 병합**했습니다 — 워크스페이스에서 회차·연계 내용을 확인해 주세요.",
         NONE: "",
-        FAIL: " ⚠ 상담 기록은 옮기지 못했습니다(권한 없음 또는 네트워크 오류). 기록은 옛 학번에 그대로 남아 있으니 상담사 계정으로 다시 시도해 주세요.",
+        FAIL: " ⚠ 상담 기록은 옮기지 못했습니다(네트워크 오류 또는 권한 문제). 기록은 옛 학번에 그대로 남아 있으니 잠시 후 이 학생을 다시 열어 학번을 확인해 주세요.",
       }[outreachResult];
       return { ok: true, message: `학생 정보가 수정되었습니다.${outreachMsg}` };
     }

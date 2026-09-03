@@ -2,7 +2,8 @@
 // UTF-8 BOM으로 Excel 한글 호환. 시범: Sheet별 CSV 파일 / 본 구현: xlsx 다중 시트 1파일(제안 12건-⑥).
 import excelColumnsJson from "../../data/excel_columns.json";
 import { surveyItems, domainLabels, diagItems, diagnosticBank } from "../lib/dataLoader";
-import { localDateStr } from "../lib/dates";
+// 파일명 날짜는 로컬(KST) 기준 — UTC slice는 새벽 다운로드가 전날 이름으로 저장됐다 (점검 A5, §7.2.1-5)
+import { localDateStr, todayStr } from "../lib/dates";
 import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
 import {
   loadOutreach,
@@ -82,7 +83,8 @@ function studentStateRow(
     region: surveyAnswerLabel("region", s.unscored.region),
     gov_link: surveyAnswerLabel("gov_link", s.survey.gov_link),
     counsel_wish: s.survey.counsel_wish === "YES" ? "희망" : "미희망",
-    consent_view: "동의",
+    // 동의 시각이 기록된 응답(2026-09-03 이후)은 일시를 함께 — 구버전은 구조적 증거(동의 없이는 진입 불가)만 (점검 S2)
+    consent_view: s.consent_at ? `동의 (${localDateStr(s.consent_at)})` : "동의",
   };
 }
 
@@ -185,7 +187,7 @@ export function exportSheet(
 ): void {
   let rows = buildRows(sheetKey, students);
   if (!opts.includeOutreach) rows = dropColumns(sheetKey, rows, OUTREACH_KEYS);
-  downloadCsv(`MJC-READY_${sheetKey}_${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  downloadCsv(`MJC-READY_${sheetKey}_${todayStr()}.csv`, rows);
 }
 
 /**
@@ -214,7 +216,7 @@ export function exportSheetForResearch(sheetKey: string, students: StudentRecord
   const rows = buildRows(sheetKey, anonymize(students));
   // 식별 가능 컬럼(성명·연락처)과 상담사 전용 컬럼(연락상태·상담메모)은 컬럼 자체를 제거
   const cleaned = dropColumns(sheetKey, rows, ["name", "phone", ...OUTREACH_KEYS]);
-  downloadCsv(`MJC-READY_연구용익명_${sheetKey}_${new Date().toISOString().slice(0, 10)}.csv`, cleaned);
+  downloadCsv(`MJC-READY_연구용익명_${sheetKey}_${todayStr()}.csv`, cleaned);
 }
 
 // ── 통합 다운로드 (2026-09-01 사용자 요구) — 시트별 분할 없이 "1 학생 = 1행" 단일 시트 ──
@@ -293,14 +295,14 @@ function dropIntegratedColumns(built: { keys: string[]; rows: string[][] }, keys
 export function exportIntegrated(students: StudentRecord[], opts: { includeOutreach?: boolean } = {}): void {
   const built = buildIntegratedRows(students);
   const rows = opts.includeOutreach ? built.rows : dropIntegratedColumns(built, OUTREACH_KEYS);
-  downloadCsv(`MJC-READY_통합_${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  downloadCsv(`MJC-READY_통합_${todayStr()}.csv`, rows);
 }
 
 /** 통합 CSV (연구용 익명) — R번호 치환 + 성명·연락처·상담사 컬럼 제거 */
 export function exportIntegratedForResearch(students: StudentRecord[]): void {
   const built = buildIntegratedRows(anonymize(students));
   const rows = dropIntegratedColumns(built, ["name", "phone", ...OUTREACH_KEYS]);
-  downloadCsv(`MJC-READY_통합_연구용익명_${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  downloadCsv(`MJC-READY_통합_연구용익명_${todayStr()}.csv`, rows);
 }
 
 export const sheetKeys = Object.keys(SHEETS);
