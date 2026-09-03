@@ -106,6 +106,11 @@ export default function Start() {
                 연구·정책 자료로 활용될 수 있습니다.
               </dd>
             </div>
+            {/* 수집·이용·관리 주체 명시 — 개인정보 고지의 처리자 표기 (2026-09-03 사용자 요청) */}
+            <div>
+              <dt>관리 부서</dt>
+              <dd>학생지원처 취·창업팀</dd>
+            </div>
           </dl>
           <label className="agree">
             <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />

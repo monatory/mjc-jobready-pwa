@@ -227,6 +227,7 @@ body {
   flex: 0 0 64px;
   font-weight: 700;
   color: var(--navy);
+  word-break: keep-all; /* 좁은 화면에서 "관리 부/서"처럼 낱말 중간이 끊기지 않게 */
 }
 .consent-terms dd {
   margin: 0;
