@@ -1588,6 +1588,23 @@ body {
   margin-top: 8px;
   flex-wrap: wrap;
 }
+/* 계정 직접 등록 폼 (2026-09-03) */
+.acct-new {
+  margin-bottom: 12px;
+}
+.acct-new__form {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.acct-new__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
 .acct-status {
   font-size: 0.78rem;
   border-radius: 999px;

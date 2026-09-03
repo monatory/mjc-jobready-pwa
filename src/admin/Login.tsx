@@ -2,6 +2,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { ensureMasterAccount, login, registerAccount, ROLE_LABELS, type AdminSession } from "./auth";
+import { CLOUD_ENABLED } from "../lib/firebase";
 
 type Tab = "login" | "register";
 
@@ -119,9 +120,20 @@ export default function AdminLogin({ onLogin }: { onLogin: (session: AdminSessio
               <span>소속 (선택)</span>
               <input className="input" placeholder="예: 잡카페" value={regDept} onChange={(e) => setRegDept(e.target.value)} />
             </label>
+            {/* 클라우드 모드에서는 이메일이어야 신청이 공용 저장소(ready_staff)에 기록돼 마스터가
+                승인할 수 있다 — 비이메일 아이디는 이 브라우저에만 남아 승인이 불가능했다 (2026-09-03) */}
             <label className="adv-filter__field">
-              <span>아이디 (영문 소문자·숫자 4~20자)</span>
-              <input className="input" value={regId} onChange={(e) => setRegId(e.target.value)} />
+              <span>{CLOUD_ENABLED ? "아이디 (이메일 주소)" : "아이디 (영문 소문자·숫자 4~20자)"}</span>
+              <input
+                className="input"
+                type={CLOUD_ENABLED ? "email" : "text"}
+                placeholder={CLOUD_ENABLED ? "예: hong@mjc.ac.kr" : ""}
+                value={regId}
+                onChange={(e) => setRegId(e.target.value)}
+              />
+              {CLOUD_ENABLED && (
+                <p className="muted small">승인·로그인이 이 이메일로 처리됩니다.</p>
+              )}
             </label>
             <label className="adv-filter__field">
               <span>비밀번호 (8자 이상)</span>

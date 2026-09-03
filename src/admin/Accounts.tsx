@@ -1,7 +1,7 @@
 // 계정 관리 패널 — 역할군별 분리 (2026-08-30):
 //  · 관리자 화면(#/admin, 마스터): 담당자(행정) 계정만  · 워크스페이스(#/counsel): 상담사 계정만
 //  · Firebase 설정 후에는 ready_staff(클라우드) 목록이 우선, 실패 시 로컬 목록 폴백
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   loadAccounts,
   approveAccount,
@@ -13,6 +13,8 @@ import {
   setStaffStatusCloud,
   setStaffLeadCloud,
   removeStaffCloud,
+  createStaffCloud,
+  createLocalAccount,
   ROLE_LABELS,
   STATUS_LABELS,
   type AdminAccount,
@@ -25,15 +27,27 @@ export default function Accounts({
   description,
   roles,
   canPromote = false,
+  canCreate = false,
 }: {
   title: string;
   description: string;
   roles: AdminRole[]; // 이 패널에서 보이는 역할군
   canPromote?: boolean; // 상담사 ↔ 상담사 관리자 전환 (마스터 전용)
+  canCreate?: boolean; // 직접 등록 (마스터 전용 — Rules상 ACTIVE 생성은 마스터만)
 }) {
   const [accounts, setAccounts] = useState<AdminAccount[]>(loadAccounts);
   const [cloudMode, setCloudMode] = useState(false);
   const [actMsg, setActMsg] = useState<string | null>(null);
+
+  // 직접 등록 폼 (2026-09-03) — 신청이 오지 않을 때의 우회 경로이자 상시 등록 수단
+  const [openNew, setOpenNew] = useState(false);
+  const [newId, setNewId] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newDept, setNewDept] = useState("");
+  const [newRole, setNewRole] = useState<AdminRole>(roles[0]);
+  const [newPw, setNewPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [newMsg, setNewMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const refreshCloud = async () => {
     const cloud = await loadStaffCloud();
@@ -71,6 +85,27 @@ export default function Accounts({
     }
   };
 
+  // 직접 등록 — 클라우드면 Auth 사용자+staff 문서(ACTIVE), 로컬이면 브라우저 계정 목록에 추가
+  const submitNew = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setNewMsg(null);
+    const payload = { name: newName, dept: newDept, role: newRole, password: newPw };
+    const r = cloudMode
+      ? await createStaffCloud({ email: newId, ...payload })
+      : await createLocalAccount({ id: newId, ...payload });
+    setNewMsg({ text: r.message, ok: r.ok });
+    if (r.ok) {
+      setNewId("");
+      setNewName("");
+      setNewDept("");
+      setNewPw("");
+      if (cloudMode) await refreshCloud();
+      else setAccounts(loadAccounts());
+    }
+    setBusy(false);
+  };
+
   return (
     <>
       <h1 className="admin__title">{title}</h1>
@@ -84,6 +119,83 @@ export default function Accounts({
             : "시범: 이 브라우저에만 저장되는 로컬 계정 — Firebase 설정(docs/FIREBASE_SETUP.md) 후 공유로 전환됩니다."}
       </p>
       {actMsg && <p className="profile-edit__msg profile-edit__msg--err">{actMsg}</p>}
+
+      {/* 직접 등록 — 신청·승인을 기다리지 않고 바로 쓸 수 있는 계정을 만든다 (2026-09-03) */}
+      {canCreate && (
+        <div className="card acct-new">
+          <button className="btn btn--ghost btn--sm" onClick={() => setOpenNew((v) => !v)}>
+            {openNew ? "− 직접 등록 닫기" : "＋ 계정 직접 등록"}
+          </button>
+          {openNew && (
+            <form className="acct-new__form" onSubmit={submitNew}>
+              <p className="muted small">
+                신청·승인 절차 없이 <strong>바로 사용 가능한 상태</strong>로 계정을 만듭니다.
+                {cloudMode
+                  ? " 아이디는 이메일이어야 하며, 비밀번호는 등록 후 본인이 변경할 수 있습니다."
+                  : " 이 브라우저에만 저장되는 로컬 계정으로 등록됩니다."}
+              </p>
+              <div className="acct-new__grid">
+                <label className="adv-filter__field">
+                  <span>{cloudMode ? "아이디 (이메일)" : "아이디"}</span>
+                  <input
+                    className="input"
+                    type={cloudMode ? "email" : "text"}
+                    placeholder={cloudMode ? "예: hong@mjc.ac.kr" : "예: hong123"}
+                    value={newId}
+                    onChange={(e) => setNewId(e.target.value)}
+                  />
+                </label>
+                <label className="adv-filter__field">
+                  <span>이름</span>
+                  <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                </label>
+                <label className="adv-filter__field">
+                  <span>소속 (선택)</span>
+                  <input
+                    className="input"
+                    placeholder="예: 잡카페"
+                    value={newDept}
+                    onChange={(e) => setNewDept(e.target.value)}
+                  />
+                </label>
+                <label className="adv-filter__field">
+                  <span>구분</span>
+                  <select
+                    className="input"
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as AdminRole)}
+                  >
+                    {roles.map((r) => (
+                      <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="adv-filter__field">
+                  <span>초기 비밀번호 (8자 이상)</span>
+                  <input
+                    className="input"
+                    type="password"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                  />
+                </label>
+              </div>
+              <button
+                className="btn btn--primary btn--sm"
+                disabled={busy || !newId || !newName || newPw.length < 8}
+              >
+                {busy ? "등록 중…" : "계정 등록"}
+              </button>
+              {newMsg && (
+                <p className={`profile-edit__msg ${newMsg.ok ? "" : "profile-edit__msg--err"}`}>
+                  {newMsg.text}
+                </p>
+              )}
+            </form>
+          )}
+        </div>
+      )}
+
       <div className="table-wrap card">
         <table className="admin-table">
           <thead>

@@ -171,6 +171,15 @@ export async function registerAccount(input: {
   }
 
   // ── 로컬 경로 ──
+  // (2026-09-03) 클라우드 모드에서 비이메일 아이디는 이 브라우저 localStorage에만 계정이 생겨
+  // 마스터 화면(공유 ready_staff 목록)에 영영 뜨지 않는 데드엔드였다 — 신청자는 승인을 기다리고
+  // 마스터는 신청이 없다고 본다. 신청 자체를 막고 이메일을 요구한다. (프로바이더 미설정으로
+  // 위 클라우드 경로가 폴백된 경우는 아이디에 @가 있으므로 이 가드에 걸리지 않는다.)
+  if (CLOUD_ENABLED && !id.includes("@"))
+    return {
+      ok: false,
+      message: "아이디는 이메일 주소로 입력해 주세요. 승인·로그인이 학교 공용 저장소로 처리되어, 이메일이 아니면 신청이 관리자에게 전달되지 않습니다.",
+    };
   if (!/^[a-z0-9_.@-]{4,40}$/.test(id))
     return { ok: false, message: "아이디는 영문 소문자·숫자(또는 이메일) 4~40자로 입력해 주세요." };
   const accounts = loadAccounts();
@@ -385,6 +394,93 @@ export async function loadStaffCloud(): Promise<AdminAccount[] | null> {
 
 // (2026-09-01 감사 P3-10·C4-12·F16) 계정 액션은 실패를 삼키지 않고 성공 여부를 반환하며,
 // 토글이 아니라 "명시적 목표 상태"를 기록한다 — 두 관리자가 동시에 처리해도 결과가 수렴한다.
+
+/** 마스터 직접 등록 (클라우드) — 신청·승인을 거치지 않고 바로 사용 가능한 계정을 만든다.
+ *  (2026-09-03) 신청이 관리자에게 전달되지 않는 상황의 우회 경로이자 상시 운영 수단.
+ *  Auth 사용자 생성은 격리된 signup 인스턴스에서(마스터 세션 보존, §7.2 Auth 3분리),
+ *  staff 문서는 반드시 마스터 세션(getDb)으로 기록한다 — Rules상 status=ACTIVE 생성은
+ *  isMaster()만 허용하므로, 갓 생성된 사용자 토큰으로 쓰면 권한 거부된다. */
+export async function createStaffCloud(input: {
+  email: string;
+  name: string;
+  dept: string;
+  role: AdminRole;
+  password: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const email = input.email.trim().toLowerCase();
+  if (!email.includes("@")) return { ok: false, message: "이메일 형식의 아이디를 입력해 주세요." };
+  if (!input.name.trim()) return { ok: false, message: "이름을 입력해 주세요." };
+  if (input.password.length < 8) return { ok: false, message: "비밀번호는 8자 이상으로 입력해 주세요." };
+  if (email === MASTER_ID) return { ok: false, message: "마스터 계정은 등록할 수 없습니다." };
+
+  const signupAuth = getSignupAuth();
+  let uid: string;
+  try {
+    uid = (await createUserWithEmailAndPassword(signupAuth, email, input.password)).user.uid;
+  } catch (e) {
+    await fbSignOut(signupAuth).catch(() => {});
+    const code = (e as { code?: string })?.code ?? "";
+    if (code === "auth/email-already-in-use")
+      return { ok: false, message: "이미 등록된 이메일입니다. 목록에 없다면 삭제(tombstone)된 계정일 수 있습니다 — 해당 사용자가 로그인하면 승인 대기로 다시 접수됩니다." };
+    if (code === "auth/invalid-email") return { ok: false, message: "이메일 형식을 확인해 주세요." };
+    if (code === "auth/weak-password") return { ok: false, message: "비밀번호가 너무 단순합니다. 8자 이상으로 다시 입력해 주세요." };
+    if (code === "auth/network-request-failed")
+      return { ok: false, message: "네트워크 오류로 등록하지 못했습니다. 연결 상태를 확인해 주세요." };
+    return { ok: false, message: "계정 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+  }
+  // 새 사용자로 로그인된 보조 세션을 먼저 정리한 뒤, 마스터 권한으로 문서를 기록한다.
+  await fbSignOut(signupAuth).catch(() => {});
+  const now = new Date().toISOString();
+  try {
+    await setDoc(doc(getDb(), COL.staff, uid), {
+      email,
+      name: input.name.trim(),
+      dept: input.dept.trim(),
+      role: input.role,
+      status: "ACTIVE",
+      created_at: now,
+      approved_at: now,
+    });
+  } catch {
+    // Auth 사용자만 남은 고아 상태 — 침묵 금지(§7.2.1-2). 당사자 로그인 시 승인 대기로 복구된다.
+    return {
+      ok: false,
+      message: "로그인 계정은 만들어졌지만 권한 정보 저장에 실패했습니다(권한·네트워크). 해당 이메일로 한 번 로그인하면 '승인 대기'로 접수되며, 그때 승인해 주세요.",
+    };
+  }
+  return { ok: true, message: `'${input.name.trim()}' 계정을 등록했습니다 — 바로 로그인할 수 있습니다.` };
+}
+
+/** 로컬(시범) 모드 직접 등록 — 이 브라우저 계정 목록에 바로 사용 가능 상태로 추가 */
+export async function createLocalAccount(input: {
+  id: string;
+  name: string;
+  dept: string;
+  role: AdminRole;
+  password: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const id = input.id.trim().toLowerCase();
+  if (!input.name.trim()) return { ok: false, message: "이름을 입력해 주세요." };
+  if (input.password.length < 8) return { ok: false, message: "비밀번호는 8자 이상으로 입력해 주세요." };
+  if (id === MASTER_ID) return { ok: false, message: "마스터 계정은 등록할 수 없습니다." };
+  if (!/^[a-z0-9_.@-]{4,40}$/.test(id))
+    return { ok: false, message: "아이디는 영문 소문자·숫자(또는 이메일) 4~40자로 입력해 주세요." };
+  const accounts = loadAccounts();
+  if (accounts.some((a) => a.id === id)) return { ok: false, message: "이미 사용 중인 아이디입니다." };
+  const now = new Date().toISOString();
+  accounts.push({
+    id,
+    name: input.name.trim(),
+    dept: input.dept.trim(),
+    role: input.role,
+    status: "ACTIVE",
+    pw_hash: await sha256(input.password),
+    created_at: now,
+    approved_at: now,
+  });
+  saveAccounts(accounts);
+  return { ok: true, message: `'${input.name.trim()}' 계정을 등록했습니다 — 바로 로그인할 수 있습니다.` };
+}
 
 export async function approveStaffCloud(uid: string): Promise<boolean> {
   try {

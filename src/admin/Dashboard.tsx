@@ -331,8 +331,9 @@ export default function Dashboard() {
         {section === "accounts" && session.role === "MASTER" && (
           <Accounts
             title="담당자 계정 관리"
-            description="담당자(행정) 계정의 가입 신청을 승인하거나 사용을 중지·삭제합니다. 상담사 계정은 상담사 워크스페이스에서 별도 관리합니다."
+            description="담당자(행정) 계정의 가입 신청을 승인하거나, 직접 등록·중지·삭제합니다. 상담사 계정은 상담사 워크스페이스에서 별도 관리합니다."
             roles={["ADMIN"]} // 마스터 계정은 어떤 목록에도 노출하지 않음 (§6.4)
+            canCreate // 이 섹션은 마스터 전용 — Rules상 ACTIVE 계정 생성은 마스터만 가능
           />
         )}
       </main>

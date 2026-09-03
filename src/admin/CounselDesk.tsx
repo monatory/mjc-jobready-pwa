@@ -168,9 +168,10 @@ export default function CounselDesk() {
         {section === "counselors" && canAccess(session.role, "counselAccounts") && (
           <Accounts
             title="상담사 계정 관리"
-            description="상담사 가입 신청을 승인하거나 사용을 중지·삭제합니다. 상담사 관리자 지정·해제는 마스터만 할 수 있습니다."
+            description="상담사 가입 신청을 승인하거나 사용을 중지·삭제합니다. 상담사 관리자 지정·해제와 직접 등록은 마스터만 할 수 있습니다."
             roles={["COUNSELOR_LEAD", "COUNSELOR"]}
             canPromote={session.role === "MASTER"}
+            canCreate={session.role === "MASTER"}
           />
         )}
       </main>
