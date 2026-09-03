@@ -9,7 +9,9 @@ import {
   AGENCY_TYPE_LABELS,
   type Agency,
   type AgencyType,
+  type AgencySaveResult,
 } from "./agencies";
+import { pullShared } from "./cloudStore";
 
 const EMPTY = { type: "AGENCY" as AgencyType, name: "", contact: "", manager: "", program: "", note: "" };
 
@@ -17,6 +19,7 @@ export default function AgencyManager() {
   const [agencies, setAgencies] = useState<Agency[]>(loadAgencies);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState<string | null>(null);
+  const [editBase, setEditBase] = useState<string | undefined>(undefined); // 편집 시작 시점 updated_at (점검 C4)
   const [typeFilter, setTypeFilter] = useState<"" | AgencyType>("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
@@ -26,18 +29,29 @@ export default function AgencyManager() {
 
   // 공유 반영 실패는 반드시 표시 — 다른 상담사에게 안 보이는 "유령 등록" 방지 (감사 C4-12)
   // 이전 성공 토스트의 타이머가 뒤이어 온 실패 경고를 1.5초 만에 지우던 문제 — 타이머를 갈아끼운다 (점검 C3)
-  const showResult = (result: "OK" | "FAIL" | "LOCAL", okMsg: string, failMsg: string) => {
-    if (result === "FAIL") setMsg({ text: failMsg, error: true });
+  const showResult = (result: AgencySaveResult, okMsg: string, failMsg: string) => {
+    if (result === "FAIL" || result === "CONFLICT") setMsg({ text: failMsg, error: true });
     else setMsg({ text: `${okMsg} ✓`, error: false });
     window.clearTimeout(msgTimer.current);
-    msgTimer.current = window.setTimeout(() => setMsg(null), result === "FAIL" ? 5000 : 1500);
+    msgTimer.current = window.setTimeout(() => setMsg(null), result === "OK" || result === "LOCAL" ? 1500 : 6000);
   };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || busy) return;
     setBusy(true);
-    void (editId ? updateAgency(editId, form) : addAgency(form)).then(({ list, result }) => {
+    void (editId ? updateAgency(editId, form, editBase) : addAgency(form)).then(async ({ list, result }) => {
+      if (result === "CONFLICT") {
+        // 다른 상담사가 먼저 수정 — 덮어쓰지 않았다. 최신본을 받아 폼에 다시 채워 이어서 편집하게 한다
+        await pullShared();
+        const fresh = loadAgencies();
+        setAgencies(fresh);
+        const latest = fresh.find((a) => a.id === editId);
+        if (latest) startEdit(latest);
+        setBusy(false);
+        showResult(result, "", "⚠ 저장하지 않았습니다 — 다른 상담사가 방금 이 기관을 수정했습니다. 최신 내용을 불러왔으니 확인한 뒤 다시 저장해 주세요.");
+        return;
+      }
       setBusy(false);
       setAgencies(list);
       showResult(
@@ -50,12 +64,14 @@ export default function AgencyManager() {
       // 등록 실패는 아무 데도 저장되지 않으므로 폼을 비우지 않는다 — 입력을 지키고 재시도 (점검 C10)
       if (result === "FAIL" && !editId) return;
       setEditId(null);
+      setEditBase(undefined);
       setForm(EMPTY);
     });
   };
 
   const startEdit = (a: Agency) => {
     setEditId(a.id);
+    setEditBase(a.updated_at);
     setForm({ type: a.type, name: a.name, contact: a.contact, manager: a.manager, program: a.program, note: a.note });
   };
 
@@ -101,7 +117,7 @@ export default function AgencyManager() {
         </div>
         <div className="adv-filter__actions">
           {editId && (
-            <button type="button" className="btn btn--ghost" onClick={() => { setEditId(null); setForm(EMPTY); }}>
+            <button type="button" className="btn btn--ghost" onClick={() => { setEditId(null); setEditBase(undefined); setForm(EMPTY); }}>
               수정 취소
             </button>
           )}

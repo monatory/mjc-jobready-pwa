@@ -113,6 +113,9 @@ export default function CounselRecord({
   const refAgencies = agencies.filter((a) => a.type === "AGENCY");
   const employers = agencies.filter((a) => a.type === "EMPLOYER");
   const selectedAgency = agencies.find((a) => a.id === refAgency);
+  // 기록이 참조하는 기관이 등록부에서 삭제·구분 변경됐으면 select가 빈칸처럼 보이면서 옛 id가 그대로
+  // 저장되던 문제 (점검 C9) — 명시적으로 보여 주고, 연계 완료 이후 단계 저장은 재선택을 요구한다
+  const refAgencyStale = Boolean(refAgency) && !refAgencies.some((a) => a.id === refAgency);
 
   const saveContact = () => void doSave({ status, memo }, undefined, "연락 기록 저장됨");
   const addSession = () => {
@@ -128,8 +131,13 @@ export default function CounselRecord({
   const saveSummary = () => void doSave({ final_summary: finalSummary }, undefined, "최종 요약 저장됨");
   const saveReferral = () => {
     // 연계 완료 이후 단계는 기관 없이 저장하면 "기관 미상 연계"가 됨 — 등록부 선택 필수 (감사 C4-15)
-    if (["REFERRED", "FOLLOWUP", "CLOSED"].includes(refStage) && !refAgency)
-      return flash("⚠ 연계 기관을 선택해 주세요 — 연계 완료 이후 단계는 기관 기록이 필요합니다.", true);
+    if (["REFERRED", "FOLLOWUP", "CLOSED"].includes(refStage) && (!refAgency || refAgencyStale))
+      return flash(
+        refAgencyStale
+          ? "⚠ 기록된 연계 기관이 등록부에서 삭제됐습니다 — 기관을 다시 선택한 뒤 저장해 주세요."
+          : "⚠ 연계 기관을 선택해 주세요 — 연계 완료 이후 단계는 기관 기록이 필요합니다.",
+        true
+      );
     void doSave(
       {
         referral: {
@@ -289,6 +297,7 @@ export default function CounselRecord({
               <span>연계 기관 (등록부에서 선택)</span>
               <select className="input" value={refAgency} onChange={(e) => setRefAgency(e.target.value)}>
                 <option value="">— 기관 선택 —</option>
+                {refAgencyStale && <option value={refAgency}>(삭제된 기관 — 다시 선택해 주세요)</option>}
                 {refAgencies.map((a) => (
                   <option key={a.id} value={a.id}>{a.name}{a.program ? ` · ${a.program}` : ""}</option>
                 ))}

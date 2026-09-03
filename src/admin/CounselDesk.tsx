@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStudents, invalidateStudentsCache } from "./responsesSource";
 import { pullShared, type CloudState } from "./cloudStore";
-import { getSession, logout, canAccess, isCounselSide, homeRoute, ROLE_LABELS, type AdminSession } from "./auth";
+import { CLOUD_ENABLED } from "../lib/firebase";
+import { getSession, logout, canAccess, isCounselSide, homeRoute, onCloudSignedOut, ROLE_LABELS, type AdminSession } from "./auth";
 import AdminLogin from "./Login";
 import Accounts from "./Accounts";
 import PasswordModal from "./PasswordModal";
@@ -30,10 +31,21 @@ export default function CounselDesk() {
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("students");
   const [folded, toggleFold] = useSidebarFold();
-  const [cloudState, setCloudState] = useState<CloudState>("LOCAL");
+  // null = 연결 확인 중 — 초기값을 "LOCAL"로 두면 로그인 직후 매번 "이 브라우저에만 보관" 경고가 먼저
+  // 떴다가 사라졌다 (점검 C7)
+  const [cloudState, setCloudState] = useState<CloudState | null>(CLOUD_ENABLED ? null : "LOCAL");
   // 상담 기록 변경 통지 구독 — 저장·동기화 후 헤더 카운트가 즉시 갱신 (감사 C4-11)
   const [outreachVersion, setOutreachVersion] = useState(0);
   useEffect(() => onOutreachChange(() => setOutreachVersion((v) => v + 1)), []);
+  // 다른 탭·기기에서 로그아웃돼 Firebase 세션이 끊기면 이 탭도 로그인 화면으로 (점검 A11/C8)
+  useEffect(
+    () =>
+      onCloudSignedOut(() => {
+        logout();
+        setSession(null);
+      }),
+    []
+  );
 
   // 담당자(행정)는 이 페이지를 볼 수 없다 — 관리자 화면으로 돌려보냄 (핵심 요구)
   useEffect(() => {
@@ -136,9 +148,11 @@ export default function CounselDesk() {
         )}
         <div className="admin__banner admin__banner--counsel">
           상담사 전용 공간 — 연락 기록·상담 메모는 이곳에서만 보이며, 담당자(행정) 화면과 일반 다운로드에는 포함되지 않습니다.{" "}
-          {cloudState === "CLOUD"
-            ? "☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다."
-            : "⚠ 공유 저장소 미연결(네트워크·권한·설정 확인) — 지금 저장하는 기록은 이 브라우저에만 보관되며 다른 상담사에게 공유되지 않습니다."}{" "}
+          {cloudState === null
+            ? "공유 저장소 연결 확인 중…"
+            : cloudState === "CLOUD"
+              ? "☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다."
+              : "⚠ 공유 저장소 미연결(네트워크·권한·설정 확인) — 지금 저장하는 기록은 이 브라우저에만 보관되며 다른 상담사에게 공유되지 않습니다."}{" "}
           {source === "CLOUD" && `(실측 응답 ${students.length}건${skipped ? ` · 형식 오류 제외 ${skipped}건` : ""})`}
           {source === "ERROR" && "⚠ 학생 응답 조회 실패 — 명단이 비어 보이면 아래 새로고침을 누르거나 네트워크·로그인 상태를 확인하세요."}
         </div>

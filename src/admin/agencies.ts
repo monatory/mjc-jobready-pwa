@@ -13,6 +13,7 @@ export interface Agency {
   program: string;   // 사업명 (연계기관) / 직무·채용 분야 (취업처)
   note: string;      // 비고
   created_at: string;
+  updated_at?: string; // 마지막 수정 시각 — 편집 충돌 감지 기준 (§7.2.1-12, 점검 C4). 구버전 문서는 없음
 }
 
 export const AGENCY_TYPE_LABELS: Record<AgencyType, string> = {
@@ -39,22 +40,25 @@ function save(list: Agency[]): Agency[] {
   return list;
 }
 
-export type AgencySaveResult = "OK" | "FAIL" | "LOCAL";
+/** CONFLICT: 내가 편집을 시작한 뒤 다른 상담사가 같은 기관을 수정함 — 덮어쓰지 않았으니 최신본을 다시 봐야 한다 */
+export type AgencySaveResult = "OK" | "FAIL" | "LOCAL" | "CONFLICT";
 
 // 클라우드 반영 헬퍼 (설정 전에는 LOCAL) — 실패를 호출부에 반환 (감사 C4-12: 무통보 금지)
-async function pushCloud(a: Agency): Promise<AgencySaveResult> {
+async function pushCloud(a: Agency, baseUpdatedAt?: string): Promise<AgencySaveResult> {
   const m = await import("./cloudStore");
-  return m.pushAgency(a);
+  return m.pushAgency(a, baseUpdatedAt);
 }
 
 export async function addAgency(
-  input: Omit<Agency, "id" | "created_at">
+  input: Omit<Agency, "id" | "created_at" | "updated_at">
 ): Promise<{ list: Agency[]; result: AgencySaveResult }> {
   const list = loadAgencies();
+  const now = new Date().toISOString();
   const agency: Agency = {
     ...input,
     id: `ag_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`,
-    created_at: new Date().toISOString(),
+    created_at: now,
+    updated_at: now,
   };
   const result = await pushCloud(agency);
   // 공유 반영에 실패한 등록은 로컬에도 남기지 않는다 — 남기면 이 브라우저의 연계 select에는 뜨지만
@@ -65,14 +69,20 @@ export async function addAgency(
   return { list: save(list), result };
 }
 
+/** 수정 — 읽기→비교→쓰기 (§7.2.1-12, 점검 C4): 편집 시작 시점의 updated_at을 원격과 비교해 다르면
+ *  CONFLICT를 돌려주고 로컬도 바꾸지 않는다. 예전엔 로컬 캐시 기준 전체 덮어쓰기였다. */
 export async function updateAgency(
   id: string,
-  patch: Partial<Omit<Agency, "id" | "created_at">>
+  patch: Partial<Omit<Agency, "id" | "created_at" | "updated_at">>,
+  baseUpdatedAt?: string
 ): Promise<{ list: Agency[]; result: AgencySaveResult }> {
-  const next = loadAgencies().map((a) => (a.id === id ? { ...a, ...patch } : a));
-  const updated = next.find((a) => a.id === id);
-  const result = updated ? await pushCloud(updated) : ("LOCAL" as AgencySaveResult);
-  return { list: save(next), result };
+  const current = loadAgencies();
+  const target = current.find((a) => a.id === id);
+  if (!target) return { list: current, result: "LOCAL" };
+  const updated: Agency = { ...target, ...patch, updated_at: new Date().toISOString() };
+  const result = await pushCloud(updated, baseUpdatedAt);
+  if (result === "CONFLICT") return { list: current, result };
+  return { list: save(current.map((a) => (a.id === id ? updated : a))), result };
 }
 
 /** 삭제 — 클라우드에는 tombstone 마킹으로 전파(감사 F14: 다른 상담사 캐시의 유령 기관 방지) */

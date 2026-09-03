@@ -9,6 +9,7 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut as fbSignOut,
+  onAuthStateChanged,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, getDocs, collection } from "firebase/firestore";
 import { CLOUD_ENABLED, COL, getAuthInst, getDb, getSignupAuth, getSignupDb, authReady, authReadyFor } from "../lib/firebase";
@@ -352,6 +353,9 @@ export function getSession(): AdminSession | null {
 
 export function logout(): void {
   sessionStorage.removeItem(SESSION_KEY);
+  // 학생 명단 메모리 캐시도 비운다 — 로그아웃 후 실명 명단이 메모리에 남아 다음 로그인(다른 권한)
+  // 화면에 그대로 뜨던 문제 (점검 A11/C8). 동적 import — 순환 방지
+  void import("./responsesSource").then((m) => m.invalidateStudentsCache());
   if (CLOUD_ENABLED) {
     fbSignOut(getAuthInst()).catch(() => {});
     // 공용 PC 보호 — 로그아웃 후 상담 메모·학생 학번이 localStorage에 평문으로 남아
@@ -602,16 +606,40 @@ export function toggleCounselorLead(id: string): AdminAccount[] {
 }
 
 /** 본인 비밀번호 변경 (마스터 계정 제외) — 클라우드 계정은 재설정 메일 발송 */
+/** 클라우드 계정 비밀번호 재설정 메일 — 로그인 화면 "비밀번호 찾기"와 비밀번호 모달이 공용 (점검 A10/C12) */
+export async function sendResetMail(id: string): Promise<{ ok: boolean; message: string }> {
+  const email = id.trim().toLowerCase();
+  if (email === MASTER_ID) return { ok: false, message: "마스터 계정 비밀번호는 화면에서 변경할 수 없습니다." };
+  if (!CLOUD_ENABLED || !email.includes("@"))
+    return { ok: false, message: "이메일 계정만 재설정 메일을 받을 수 있습니다. 로컬 계정은 마스터에게 문의해 주세요." };
+  try {
+    await sendPasswordResetEmail(getAuthInst(), email);
+    return { ok: true, message: `${email}로 비밀번호 재설정 메일을 보냈습니다. 메일함(스팸함 포함)을 확인해 주세요.` };
+  } catch (e) {
+    const code = (e as { code?: string })?.code ?? "";
+    if (code === "auth/user-not-found") return { ok: false, message: "등록되지 않은 이메일입니다. 아이디를 확인해 주세요." };
+    if (code === "auth/invalid-email") return { ok: false, message: "이메일 형식을 확인해 주세요." };
+    return { ok: false, message: "재설정 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+  }
+}
+
+/** 클라우드 세션이 다른 탭·기기에서 끊겼을 때 통지 — "로그인된 화면인데 모든 저장이 실패"하는 상태 방지
+ *  (점검 A11/C8). 최초 null(복원 전·로컬 계정)은 무시하고, 사용자가 있다가 사라진 전이만 알린다. */
+export function onCloudSignedOut(cb: () => void): () => void {
+  if (!CLOUD_ENABLED) return () => {};
+  let hadUser = false;
+  return onAuthStateChanged(getAuthInst(), (user) => {
+    if (user) hadUser = true;
+    else if (hadUser) {
+      hadUser = false;
+      cb();
+    }
+  });
+}
+
 export async function changePassword(id: string, currentPw: string, newPw: string): Promise<{ ok: boolean; message: string }> {
   if (id === MASTER_ID) return { ok: false, message: "마스터 계정 비밀번호는 화면에서 변경할 수 없습니다." };
-  if (CLOUD_ENABLED && id.includes("@")) {
-    try {
-      await sendPasswordResetEmail(getAuthInst(), id);
-      return { ok: true, message: `${id}로 비밀번호 재설정 메일을 보냈습니다. 메일함을 확인해 주세요.` };
-    } catch {
-      return { ok: false, message: "재설정 메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요." };
-    }
-  }
+  if (CLOUD_ENABLED && id.includes("@")) return sendResetMail(id);
   if (newPw.length < 8) return { ok: false, message: "새 비밀번호는 8자 이상으로 입력해 주세요." };
   const accounts = loadAccounts();
   const account = accounts.find((a) => a.id === id);

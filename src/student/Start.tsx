@@ -18,6 +18,14 @@ export default function Start() {
 
   const goNext = () => {
     setConsent(true);
+    // 브라우저 저장소가 막힌 환경(시크릿 모드·사이트 데이터 차단)에서는 동의가 저장되지 않아 설문 화면의
+    // 가드가 아무 안내 없이 시작 화면으로 되돌렸다 (2026-09-02 점검 S5) — 저장 자가진단 후 안내
+    if (!getConsent()) {
+      window.alert(
+        "브라우저 저장 공간을 사용할 수 없어 진행할 수 없습니다. 시크릿(비공개) 창을 닫고 일반 창에서 열거나, 사이트 데이터 차단을 해제한 뒤 다시 시도해 주세요."
+      );
+      return;
+    }
     navigate("/survey");
   };
 

@@ -1,7 +1,7 @@
 // 관리자 로그인·계정 신청 화면 — 시범 프로토타입(로컬 저장소 인증, auth.ts 주석 참조)
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { ensureMasterAccount, login, registerAccount, ROLE_LABELS, type AdminSession } from "./auth";
+import { ensureMasterAccount, login, registerAccount, sendResetMail, ROLE_LABELS, type AdminSession } from "./auth";
 import { CLOUD_ENABLED } from "../lib/firebase";
 
 type Tab = "login" | "register";
@@ -97,6 +97,23 @@ export default function AdminLogin({ onLogin }: { onLogin: (session: AdminSessio
               담당자(행정)·상담사는 계정 신청 후 승인을 받으면 로그인할 수 있습니다.
               로그인하면 각자의 화면으로 이동합니다.
             </p>
+            {/* 비밀번호 찾기 — 클라우드(이메일) 계정은 재설정 메일로 (2026-09-02 점검 A10/C12) */}
+            {CLOUD_ENABLED && (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm btn--block"
+                disabled={busy || !loginId.includes("@")}
+                title={loginId.includes("@") ? "입력한 이메일로 재설정 메일을 보냅니다" : "아이디(이메일)를 먼저 입력해 주세요"}
+                onClick={async () => {
+                  setBusy(true);
+                  const r = await sendResetMail(loginId);
+                  setBusy(false);
+                  setMessage({ text: r.message, ok: r.ok });
+                }}
+              >
+                비밀번호를 잊으셨나요? 재설정 메일 받기
+              </button>
+            )}
           </form>
         )}
 

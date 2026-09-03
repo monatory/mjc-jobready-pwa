@@ -174,6 +174,16 @@ export default function StudentsPanel({
     setEditing(false);
     setCounselDirty(false);
   };
+  // Esc로 상세 모달 닫기 (점검 A14) — 미저장 확인은 closeDetail이 처리
+  useEffect(() => {
+    if (!detail) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDetail();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, editing, counselDirty]);
 
   const openEdit = (s: StudentRecord) => {
     const isGrad = s.grade.startsWith("졸업");
@@ -453,7 +463,22 @@ export default function StudentsPanel({
             {filtered.map((s) => {
               const st = statusOf(outreach, s.student_id);
               return (
-                <tr key={`${s.semester || "s"}_${s.student_id}`} onClick={() => { setDetail(s); setEditing(false); setEditMsg(null); }}>
+                <tr
+                  key={`${s.semester || "s"}_${s.student_id}`}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`${s.name} 상세 보기`}
+                  onClick={() => { setDetail(s); setEditing(false); setEditMsg(null); }}
+                  // 키보드로도 상세를 열 수 있게 (점검 A14 — 명단 행이 마우스 전용이었다)
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDetail(s);
+                      setEditing(false);
+                      setEditMsg(null);
+                    }
+                  }}
+                >
                   <td className="small" title={s.completed_at}>{localDateStr(s.completed_at) || "—"}</td>
                   <td>{s.student_id}</td>
                   <td><strong>{s.name}</strong></td>
@@ -509,7 +534,13 @@ export default function StudentsPanel({
 
       {detail && (
         <div className="modal-backdrop" onClick={closeDetail}>
-          <div className="modal card admin-detail" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal card admin-detail"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${detail.name} 학생 상세`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="admin-detail__head">
               <div>
                 <h3>{detail.name} <span className="muted">({detail.student_id} · {detail.dept} {gradeLabel(detail.grade)})</span></h3>

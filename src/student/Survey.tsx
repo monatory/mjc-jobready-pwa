@@ -46,24 +46,31 @@ export default function Survey() {
   useEffect(() => { setUnscored(unscored); }, [unscored]);
   useEffect(() => { setCerts(certs); }, [certs]);
 
-  const requiredDone = useMemo(() => {
+  // 기본정보 5칸의 개별 유효성 — 오류 시 칸별 표시(점검 S8)와 전체 진행 판정이 같은 값을 쓴다
+  const fieldOk = useMemo(() => {
     // 휴대전화는 상담사가 먼저 연락하는 시스템의 핵심 채널 — 필수 (숫자 10~11자리)
-    const phoneOk = /^01[0-9]-?\d{3,4}-?\d{4}$/.test(profile.phone.trim());
+    const phone = /^01[0-9]-?\d{3,4}-?\d{4}$/.test(profile.phone.trim());
     // 학번: 영숫자 4~20자 — 서버 규칙(firestore.rules validResponse)과 동일 조건.
     // 불일치하면 전 과정을 마치고 제출만 영구 실패했다 (감사 S2-02·F12)
-    const idOk = /^[A-Za-z0-9]{4,20}$/.test(profile.student_id.trim());
-    const nameOk = profile.name.trim().length >= 1 && profile.name.trim().length <= 30;
+    const id = /^[A-Za-z0-9]{4,20}$/.test(profile.student_id.trim());
+    const name = profile.name.trim().length >= 1 && profile.name.trim().length <= 30;
+    const dept = profile.dept.trim().length > 0;
     // 학년: 본과정 1~3 / 전공심화 1~2 / 졸업(연도 4자리) — 졸업 연도는 현실 범위만 (감사 S2-10)
     const gradYearOk = !profile.grade.startsWith("졸업") ||
       (() => {
         const y = Number(profile.grade.slice(2));
         return y >= 2000 && y <= new Date().getFullYear() + 1;
       })();
-    const gradeOk = GRADE_PATTERN.test(profile.grade) && gradYearOk;
-    const profileOk = idOk && nameOk && profile.dept.trim() && gradeOk && phoneOk;
+    const grade = GRADE_PATTERN.test(profile.grade) && gradYearOk;
+    return { id, name, dept, grade, phone };
+  }, [profile]);
+  const requiredDone = useMemo(() => {
+    const profileOk = Object.values(fieldOk).every(Boolean);
     const surveyOk = scoredItemEntries.every(([key]) => answers[key]);
     return Boolean(profileOk && surveyOk);
-  }, [profile, answers]);
+  }, [fieldOk, answers]);
+  // "다음"을 눌러 오류가 켜진 뒤에만 칸별 빨간 테두리 — 입력 중에는 방해하지 않는다
+  const errCls = (ok: boolean) => (showErrors && !ok ? " input--error" : "");
 
   const answeredCount = scoredItemEntries.filter(([key]) => answers[key]).length;
 
@@ -168,7 +175,7 @@ export default function Survey() {
               <label className="field__label" htmlFor="profile-student-id">학번</label>
               <input
                 id="profile-student-id"
-                className="input"
+                className={`input${errCls(fieldOk.id)}`}
                 value={profile.student_id}
                 inputMode="numeric"
                 placeholder="예: 20261234"
@@ -179,7 +186,7 @@ export default function Survey() {
               <label className="field__label" htmlFor="profile-name">성명</label>
               <input
                 id="profile-name"
-                className="input"
+                className={`input${errCls(fieldOk.name)}`}
                 value={profile.name}
                 placeholder="이름"
                 onChange={(e) => setProfileState({ ...profile, name: e.target.value })}
@@ -189,7 +196,7 @@ export default function Survey() {
               <label className="field__label" htmlFor="profile-dept">학과</label>
               <input
                 id="profile-dept"
-                className="input"
+                className={`input${errCls(fieldOk.dept)}`}
                 value={profile.dept}
                 placeholder="예: 컴퓨터공학과"
                 onChange={(e) => setProfileState({ ...profile, dept: e.target.value })}
@@ -199,7 +206,7 @@ export default function Survey() {
               <label className="field__label" htmlFor="profile-phone">휴대전화</label>
               <input
                 id="profile-phone"
-                className="input"
+                className={`input${errCls(fieldOk.phone)}`}
                 type="tel"
                 value={profile.phone}
                 inputMode="numeric"
@@ -212,7 +219,7 @@ export default function Survey() {
             <div className="field field--full">
               <label className="field__label">학년 (과정 구분)</label>
               {/* 본과정 1~3 / 전공심화과정 1~2 / 졸업생(연도 입력) — 코드값은 "본과N"·"심화N"·"졸업YYYY" 유지 */}
-              <div className="grade-picker">
+              <div className={`grade-picker${showErrors && !fieldOk.grade ? " grade-picker--error" : ""}`}>
                 <div className="grade-picker__row">
                   <span className="grade-picker__track">본과정</span>
                   {["1", "2", "3"].map((n) => (

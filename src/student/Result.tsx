@@ -403,6 +403,10 @@ export default function Result() {
         <footer className="legal">
           {submitState === "DONE" && <>응답이 안전하게 제출되었습니다. </>}
           {submitState === "SAVING" && <>응답 제출 중… </>}
+          {/* 인쇄 CSS가 실패 배너를 숨기므로 푸터에도 남긴다 — PDF에 미제출 흔적이 없던 문제 (점검 S6) */}
+          {(submitState === "FAIL" || submitState === "DENIED" || submitState === "NO_PROFILE") && (
+            <strong>⚠ 이 응답은 아직 학교에 제출되지 않았습니다 — 화면에서 다시 제출해 주세요. </strong>
+          )}
           {templates.legal_footer}
         </footer>
       </main>

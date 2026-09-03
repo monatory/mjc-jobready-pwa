@@ -19,7 +19,7 @@ const rules = levelRules as unknown as {
   jas_cutoff_level3: number;
   gates: { timing_gate: { values: string[] } };
 };
-import { getSession, logout, canAccess, isCounselSide, homeRoute, ROLE_LABELS, type AdminSession } from "./auth";
+import { getSession, logout, canAccess, isCounselSide, homeRoute, onCloudSignedOut, ROLE_LABELS, type AdminSession } from "./auth";
 import AdminLogin from "./Login";
 import Accounts from "./Accounts";
 import PasswordModal from "./PasswordModal";
@@ -42,6 +42,15 @@ export default function Dashboard() {
   useEffect(() => {
     if (session && isCounselSide(session.role) && session.role !== "MASTER") navigate("/counsel", { replace: true });
   }, [session, navigate]);
+  // 다른 탭·기기에서 로그아웃돼 Firebase 세션이 끊기면 이 탭도 로그인 화면으로 (점검 A11/C8)
+  useEffect(
+    () =>
+      onCloudSignedOut(() => {
+        logout();
+        setSession(null);
+      }),
+    []
+  );
 
   // ── 집계 기간 (검사 실시일 기준) — 종합 현황·데이터 다운로드 공통 적용 (2026-08-31) ──
   const [period, setPeriod] = useState<{ from: string; to: string }>({ from: "", to: "" });

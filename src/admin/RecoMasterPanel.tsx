@@ -424,7 +424,13 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
                   {a.active && a.active_to < today && <span className="reco-badge reco-badge--warn">기간 만료</span>}
                 </td>
                 <td>
-                  <button className={`toggle ${a.active ? "toggle--on" : ""}`} onClick={() => void toggleActive(a)}>
+                  <button
+                    className={`toggle ${a.active ? "toggle--on" : ""}`}
+                    role="switch"
+                    aria-checked={a.active}
+                    aria-label={`${a.name} 활성 여부`}
+                    onClick={() => void toggleActive(a)}
+                  >
                     {a.active ? "ON" : "OFF"}
                   </button>
                 </td>

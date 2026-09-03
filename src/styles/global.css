@@ -343,6 +343,21 @@ body {
   outline: 2px solid rgba(11, 61, 145, 0.35);
   border-color: var(--navy);
 }
+/* 필수 오류 시 칸별 표시 — 상단 경고만으로는 어느 칸인지 찾기 어려웠다 (점검 S8) */
+.input--error {
+  border-color: var(--red);
+  background: #fff7f7;
+}
+.grade-picker--error {
+  outline: 1.5px solid var(--red);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+/* 학생 화면 칩(학년·지역·직무 등)은 손가락 터치 목표 44px 확보 — 관리자 밀도 칩과 분리 (점검 S9) */
+.page .chip {
+  min-height: 44px;
+  padding: 10px 14px;
+}
 .option-row {
   display: flex;
   flex-wrap: wrap;
@@ -1388,7 +1403,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
   font-weight: 600;
 }
@@ -1622,7 +1637,7 @@ body {
 }
 .acct-status--pending {
   background: #fff4e0;
-  color: #b06000;
+  color: #9a5400;
 }
 .acct-status--disabled {
   background: #ececf0;

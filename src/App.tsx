@@ -5,10 +5,13 @@ import Diagnostic from "./student/Diagnostic";
 import Result from "./student/Result";
 import Dashboard from "./admin/Dashboard";
 import CounselDesk from "./admin/CounselDesk";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 export default function App() {
   return (
     <HashRouter>
+      {/* 렌더 예외 시 백지 대신 안내 화면 (점검 C5) */}
+      <ErrorBoundary>
       <Routes>
         <Route path="/" element={<Start />} />
         <Route path="/survey" element={<Survey />} />
@@ -20,6 +23,7 @@ export default function App() {
         {/* 오타·구주소 해시가 백지 화면이 되지 않도록 시작 화면으로 (2026-09-02 점검 MISS-06) */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </ErrorBoundary>
     </HashRouter>
   );
 }
