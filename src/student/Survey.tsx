@@ -278,6 +278,9 @@ export default function Survey() {
             const info = (item as unknown as {
               info?: { summary: string; programs: Array<{ name: string; desc: string }>; notice: string };
             }).info;
+            // 선택지별 안내(option_notice) — 고른 답에 따라 다른 안내를 보여준다 (상담 희망/미희망 등)
+            const optionNotice = (item as unknown as { option_notice?: Record<string, string> })
+              .option_notice?.[answers[key] ?? ""];
             return (
               <div className={`q-block ${showErrors && !answers[key] ? "q-block--error" : ""}`} key={key}>
                 <p className="q-block__label">
@@ -308,6 +311,7 @@ export default function Survey() {
                   ))}
                 </div>
                 {info && <p className="q-info__notice">{info.notice}</p>}
+                {optionNotice && <p className="q-info__notice">{optionNotice}</p>}
               </div>
             );
           })}

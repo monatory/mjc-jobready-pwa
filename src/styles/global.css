@@ -471,6 +471,38 @@ body {
 }
 
 /* ── 진단(STEP 3) ── */
+/* 미응답 안내 카드 — 결과를 볼 수 없는 이유 + 빼먹은 문항 바로가기 (2026-09-03) */
+.todo-card {
+  border: 1px solid #f3d9a8;
+  background: #fffaf0;
+}
+.todo-card__msg {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+.todo-card__msg strong {
+  color: #b26a00;
+}
+.todo-card__sub {
+  margin: 12px 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.todo-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.todo-card__chips .chip {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+.todo-card .btn--block {
+  margin-top: 12px;
+}
 .diag-progress {
   display: flex;
   align-items: center;

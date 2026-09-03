@@ -23,6 +23,20 @@ export default function Diagnostic() {
   const q = diagItems[cursor];
   const answeredCount = diagItems.filter((it) => answers[it.id]).length;
   const allDone = answeredCount === diagItems.length;
+  // 미응답 문항 목록 — 하단 안내와 "빼먹은 문항으로 이동"에 사용
+  const unanswered = useMemo(
+    () => diagItems.map((it, i) => (answers[it.id] ? -1 : i)).filter((i) => i !== -1),
+    [answers]
+  );
+  // 이미 지나온 구간에서 건너뛴 문항(= 마지막 응답 문항보다 앞의 미응답) — "빼먹은 부분"만 칩으로 안내
+  const lastAnsweredIdx = useMemo(() => {
+    let last = -1;
+    diagItems.forEach((it, i) => {
+      if (answers[it.id]) last = i;
+    });
+    return last;
+  }, [answers]);
+  const skipped = unanswered.filter((i) => i < lastAnsweredIdx);
 
   // 자동 진행 타이머 — 학생이 "이전/다음"을 눌러 이동하면 취소한다.
   // 취소 없이는 검토하러 돌아간 화면을 350ms 뒤 타이머가 강제로 앞으로 밀었다 (감사 S2-08)
@@ -111,6 +125,31 @@ export default function Diagnostic() {
             </button>
           )}
         </div>
+
+        {/* 미응답 안내 — 결과를 볼 수 없는 이유와 빼먹은 문항으로 바로 이동하는 경로를 하단에 상시 노출 */}
+        {!allDone && (
+          <section className="card todo-card">
+            <p className="todo-card__msg">
+              아직 응답하지 않은 문항이 <strong>{unanswered.length}개</strong> 있습니다.
+              모든 문항에 응답해야 결과를 확인할 수 있어요.
+            </p>
+            {skipped.length > 0 && (
+              <>
+                <p className="todo-card__sub">건너뛴 문항 — 눌러서 바로 이동</p>
+                <div className="todo-card__chips">
+                  {skipped.map((i) => (
+                    <button key={i} type="button" className="chip" onClick={() => goto(i)}>
+                      {i + 1}번
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <button className="btn btn--primary btn--block" onClick={() => goto(unanswered[0])}>
+              미응답 문항으로 이동 ({unanswered[0] + 1}번) →
+            </button>
+          </section>
+        )}
       </main>
     </div>
   );
