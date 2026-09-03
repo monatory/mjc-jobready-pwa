@@ -15,6 +15,8 @@ import {
   removeStaffCloud,
   createStaffCloud,
   createLocalAccount,
+  setStaffRoleCloud,
+  setAccountRole,
   ROLE_LABELS,
   STATUS_LABELS,
   type AdminAccount,
@@ -28,16 +30,18 @@ export default function Accounts({
   roles,
   canPromote = false,
   canCreate = false,
+  reassignTo,
 }: {
   title: string;
   description: string;
   roles: AdminRole[]; // 이 패널에서 보이는 역할군
   canPromote?: boolean; // 상담사 ↔ 상담사 관리자 전환 (마스터 전용)
   canCreate?: boolean; // 직접 등록 (마스터 전용 — Rules상 ACTIVE 생성은 마스터만)
+  reassignTo?: AdminRole; // 잘못 접수된 계정을 옮길 반대편 구분 (마스터 전용)
 }) {
   const [accounts, setAccounts] = useState<AdminAccount[]>(loadAccounts);
   const [cloudMode, setCloudMode] = useState(false);
-  const [actMsg, setActMsg] = useState<string | null>(null);
+  const [actMsg, setActMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   // 직접 등록 폼 (2026-09-03) — 신청이 오지 않을 때의 우회 경로이자 상시 등록 수단
   const [openNew, setOpenNew] = useState(false);
@@ -66,7 +70,10 @@ export default function Accounts({
 
   // 클라우드/로컬 공용 액션 디스패치 — 클라우드 실패는 반드시 표시 (감사 P3-10·C4-12),
   // 상태·역할은 토글이 아니라 화면이 계산한 "목표값"을 기록 (감사 F16: 동시 처리 시 의도 반전 방지)
-  const act = async (a: AdminAccount, action: "approve" | "toggleActive" | "toggleLead" | "remove") => {
+  const act = async (
+    a: AdminAccount,
+    action: "approve" | "toggleActive" | "toggleLead" | "remove" | "reassign"
+  ) => {
     setActMsg(null);
     if (cloudMode && a.uid) {
       let ok = false;
@@ -75,13 +82,27 @@ export default function Accounts({
       if (action === "toggleLead")
         ok = await setStaffLeadCloud(a.uid, a.role === "COUNSELOR" ? "COUNSELOR_LEAD" : "COUNSELOR");
       if (action === "remove") ok = await removeStaffCloud(a.uid);
-      if (!ok) setActMsg("⚠ 처리에 실패했습니다 — 네트워크·권한(규칙 게시) 상태를 확인하고 다시 시도해 주세요.");
+      if (action === "reassign" && reassignTo) ok = await setStaffRoleCloud(a.uid, reassignTo);
+      if (!ok)
+        setActMsg({ text: "⚠ 처리에 실패했습니다 — 네트워크·권한(규칙 게시) 상태를 확인하고 다시 시도해 주세요.", ok: false });
+      else if (action === "reassign" && reassignTo)
+        setActMsg({
+          text: `'${a.name}' 계정을 ${ROLE_LABELS[reassignTo]}(으)로 옮겼습니다 — 해당 계정 관리 화면에서 승인해 주세요.`,
+          ok: true,
+        });
       await refreshCloud();
     } else {
       if (action === "approve") setAccounts(approveAccount(a.id));
       if (action === "toggleActive") setAccounts(toggleAccountActive(a.id));
       if (action === "toggleLead") setAccounts(toggleCounselorLead(a.id));
       if (action === "remove") setAccounts(removeAccount(a.id));
+      if (action === "reassign" && reassignTo) {
+        setAccounts(setAccountRole(a.id, reassignTo));
+        setActMsg({
+          text: `'${a.name}' 계정을 ${ROLE_LABELS[reassignTo]}(으)로 옮겼습니다 — 해당 계정 관리 화면에서 승인해 주세요.`,
+          ok: true,
+        });
+      }
     }
   };
 
@@ -118,7 +139,9 @@ export default function Accounts({
             ? "공유 저장소에 연결하지 못해 이 브라우저의 로컬 계정을 표시 중입니다."
             : "시범: 이 브라우저에만 저장되는 로컬 계정 — Firebase 설정(docs/FIREBASE_SETUP.md) 후 공유로 전환됩니다."}
       </p>
-      {actMsg && <p className="profile-edit__msg profile-edit__msg--err">{actMsg}</p>}
+      {actMsg && (
+        <p className={`profile-edit__msg ${actMsg.ok ? "" : "profile-edit__msg--err"}`}>{actMsg.text}</p>
+      )}
 
       {/* 직접 등록 — 신청·승인을 기다리지 않고 바로 쓸 수 있는 계정을 만든다 (2026-09-03) */}
       {canCreate && (
@@ -235,6 +258,19 @@ export default function Accounts({
                       {canPromote && (a.role === "COUNSELOR" || a.role === "COUNSELOR_LEAD") && a.status === "ACTIVE" && (
                         <button className="btn btn--ghost btn--sm" onClick={() => void act(a, "toggleLead")}>
                           {a.role === "COUNSELOR" ? "관리자로 지정" : "관리자 해제"}
+                        </button>
+                      )}
+                      {/* 구분 이동 — 신청이 반대편 대기열에 접수됐을 때 삭제·재신청 없이 옮긴다 (2026-09-03) */}
+                      {reassignTo && (
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          title={`이 계정을 ${ROLE_LABELS[reassignTo]} 목록으로 옮깁니다`}
+                          onClick={() => {
+                            if (window.confirm(`'${a.name}(${a.id})' 계정을 ${ROLE_LABELS[reassignTo]}(으)로 옮길까요?`))
+                              void act(a, "reassign");
+                          }}
+                        >
+                          {ROLE_LABELS[reassignTo]}로 변경
                         </button>
                       )}
                       <button

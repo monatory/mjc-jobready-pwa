@@ -11,7 +11,7 @@ import {
   signOut as fbSignOut,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, getDocs, collection } from "firebase/firestore";
-import { CLOUD_ENABLED, COL, getAuthInst, getDb, getSignupAuth, getSignupDb, authReady } from "../lib/firebase";
+import { CLOUD_ENABLED, COL, getAuthInst, getDb, getSignupAuth, getSignupDb, authReady, authReadyFor } from "../lib/firebase";
 
 // 역할 체계 (2026-08-30 사용자 확정 — "담당자는 상담사 페이지를 볼 수 없어야 한다"):
 //  MASTER          마스터(개발자=사용자) — 양쪽 전부
@@ -82,6 +82,28 @@ export const canAccess = (role: AdminRole, section: string): boolean =>
 
 const ACCOUNTS_KEY = "mjc_ready_admin_accounts";
 const SESSION_KEY = "mjc_ready_admin_session";
+// 신청 시 고른 구분(역할) 기억 — 신청 문서 쓰기가 실패해 Auth 사용자만 남은 경우,
+// 다음 로그인의 고아 복구가 역할을 상담사로 잘못 접수하던 문제를 막는다 (2026-09-03).
+const REQ_ROLE_KEY = "mjc_ready_signup_roles";
+
+function rememberRequestedRole(email: string, role: AdminRole): void {
+  try {
+    const map = JSON.parse(localStorage.getItem(REQ_ROLE_KEY) ?? "{}") as Record<string, AdminRole>;
+    map[email] = role;
+    localStorage.setItem(REQ_ROLE_KEY, JSON.stringify(map));
+  } catch {
+    /* 저장 실패는 무시 — 복구 시 기본값(상담사)으로 접수되고, 마스터가 구분을 바꿀 수 있다 */
+  }
+}
+
+function recallRequestedRole(email: string): AdminRole | null {
+  try {
+    const map = JSON.parse(localStorage.getItem(REQ_ROLE_KEY) ?? "{}") as Record<string, AdminRole>;
+    return map[email] ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // 마스터 내장 계정 (개발자 본인) — 등록 절차 없이 최초부터 로그인 가능.
 // 비밀번호는 원문을 코드에 두지 않고 SHA-256 해시로만 고정(2026-08-30 사용자 지정).
@@ -143,8 +165,14 @@ export async function registerAccount(input: {
   // 로그인 세션(마스터·상담사·학생 익명)을 갈아타 파괴하던 문제 수정 — 신청은 격리된 세션에서 처리.
   if (CLOUD_ENABLED && id.includes("@")) {
     const auth = getSignupAuth();
+    // 신청한 구분을 먼저 기억 — 아래 문서 쓰기가 실패해도 고아 복구가 역할을 되살릴 수 있게 (2026-09-03)
+    rememberRequestedRole(id, input.role);
     try {
       const cred = await createUserWithEmailAndPassword(auth, id, input.password);
+      // (2026-09-03) Firestore가 새 사용자의 인증 토큰을 반영할 때까지 대기. 대기 없이 쓰면
+      // 비인증 요청으로 나가 규칙에 거부되고 Auth 사용자만 남는 "고아"가 된다 — 그 상태로
+      // 로그인하면 복구 경로가 역할을 상담사로 접수해, 담당자 신청이 상담사 대기열에 떴다.
+      await authReadyFor(auth);
       await setDoc(doc(getSignupDb(), COL.staff, cred.user.uid), {
         email: id,
         name: input.name.trim(),
@@ -250,14 +278,17 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
   if (!snap || !snap.exists()) {
     // 고아 계정 복구 (2026-08-31): 가입 중 Auth 사용자만 만들어지고 신청 문서 쓰기가 실패한 경우 —
     // 승인 대기 문서를 즉석 재생성해 "이미 등록된 이메일 ↔ 계정 정보 없음" 데드엔드를 제거한다.
-    // 역할은 기본 상담사(COUNSELOR)로 접수 — 담당자(행정) 신청이었다면 마스터가 삭제 후 재신청 안내.
+    // (2026-09-03 수정) 역할을 무조건 COUNSELOR로 접수하던 탓에 담당자(행정) 신청이 상담사
+    // 승인 대기열에 떠서, 마스터가 일반관리 화면에서 승인할 수 없었다. 신청 시 기억해 둔 구분을
+    // 우선 사용하고, 알 수 없을 때만 상담사로 접수한다(마스터가 목록에서 구분 변경 가능).
     // 재생성 실패를 삼키면 "접수되었습니다"라고 안내해 놓고 승인 목록에는 뜨지 않아,
     // 사용자가 오지 않을 승인을 무한정 기다린다 (§7.2.1-2, 2026-09-02 점검 [중간-5])
+    const requestedRole = recallRequestedRole(email);
     const recovered = await setDoc(doc(db, COL.staff, uid), {
       email,
       name: email.split("@")[0],
       dept: "",
-      role: "COUNSELOR",
+      role: requestedRole === "ADMIN" || requestedRole === "COUNSELOR" ? requestedRole : "COUNSELOR",
       status: "PENDING",
       created_at: new Date().toISOString(),
     })
@@ -502,6 +533,24 @@ export async function setStaffStatusCloud(uid: string, status: "ACTIVE" | "DISAB
   } catch {
     return false;
   }
+}
+
+/** 구분(역할) 이동 — 담당자(행정) ↔ 상담사. 마스터 전용(Rules에서도 역할 변경은 isMaster()만).
+ *  신청이 엉뚱한 대기열에 접수된 계정을 삭제·재신청 없이 옮길 때 사용 (2026-09-03). */
+export async function setStaffRoleCloud(uid: string, role: AdminRole): Promise<boolean> {
+  try {
+    await updateDoc(doc(getDb(), COL.staff, uid), { role });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 로컬 모드 구분 이동 */
+export function setAccountRole(id: string, role: AdminRole): AdminAccount[] {
+  const accounts = loadAccounts().map((a) => (a.id === id && a.role !== "MASTER" ? { ...a, role } : a));
+  saveAccounts(accounts);
+  return accounts;
 }
 
 /** 목표 역할(COUNSELOR/COUNSELOR_LEAD)을 명시적으로 기록 */

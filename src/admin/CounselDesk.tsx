@@ -172,6 +172,8 @@ export default function CounselDesk() {
             roles={["COUNSELOR_LEAD", "COUNSELOR"]}
             canPromote={session.role === "MASTER"}
             canCreate={session.role === "MASTER"}
+            // 담당자(행정) 신청이 상담사 대기열로 접수된 경우 여기서 되돌린다 (2026-09-03)
+            reassignTo={session.role === "MASTER" ? "ADMIN" : undefined}
           />
         )}
       </main>
