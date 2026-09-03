@@ -316,6 +316,7 @@ body {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 10px;
+  min-width: 0; /* 그리드 칸이 입력창 고유 폭에 눌려 넘치지 않게 (모바일 짤림 방지) */
 }
 .field--full {
   grid-column: 1 / -1; /* 2열 그리드에서 전체 폭 차지 — 키 큰 블록(학년 과정 구분)이 옆 칸을 늘리지 않게 */
@@ -326,6 +327,7 @@ body {
 }
 .input {
   font: inherit;
+  width: 100%; /* 기본 input 고유 폭(약 180px)이 아니라 칸을 꽉 채우게 — 모바일 2열에서 짤림 방지 */
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
@@ -969,10 +971,14 @@ body {
 }
 
 /* ── 반응형 ── */
-@media (max-width: 380px) {
+/* 기본정보 2열은 컨테이너가 넓을 때(태블릿·PC)만 유지 — 폰(대부분 360~430px 세로)에서는
+   1열로 접어 성명·휴대전화 입력창이 옆 칸에 눌려 짤리지 않게 한다 (2026-09-03 모바일 짤림 수정). */
+@media (max-width: 480px) {
   .grid-2 {
     grid-template-columns: 1fr;
   }
+}
+@media (max-width: 380px) {
   /* 좁은 화면에서도 척도 "방향"은 보여야 한다 — 라벨 전체를 숨기면 1점·5점의 의미 안내가
      화면에 전무해 응답이 왜곡될 수 있다(감사 S2-06). 양끝 라벨만 유지, 가운데만 숨김. */
   .scale span {
