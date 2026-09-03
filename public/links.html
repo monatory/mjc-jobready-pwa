@@ -92,6 +92,11 @@
   .chip--warn  { background: var(--warn-soft); color: var(--warn); }
   .card__desc { margin: 0; font-size: 0.88rem; color: var(--muted); }
   .card__note { margin: 0; font-size: 0.8rem; color: var(--warn); }
+  .dl { margin: 14px 0 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .dl__btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 8px;
+    background: var(--navy); color: #fff; text-decoration: none; font-size: 0.88rem; font-weight: 700; }
+  .dl__btn:hover { background: #16294a; }
+  .dl__note { font-size: 0.78rem; color: var(--muted); }
   .urlrow { display: flex; gap: 8px; align-items: center; margin-top: auto; padding-top: 6px; }
   .url {
     font-family: "IBM Plex Mono", Consolas, monospace; font-size: 0.8rem;
@@ -128,6 +133,7 @@
     body { background: #fff; }
     .copy { display: none; }
     .card { break-inside: avoid; }
+    .dl { display: none; }
   }
 </style>
 
@@ -136,6 +142,10 @@
     <p class="eyebrow">MJC-READY · 진로·취업 상태진단</p>
     <h1>MJC-READY 링크북</h1>
     <p class="lede">명지전문대학 진로·취업 상태진단 시스템의 접속 주소 모음입니다. QR 코드는 휴대전화 카메라로 바로 스캔할 수 있습니다.</p>
+    <p class="dl">
+      <a class="dl__btn" href="MJC-READY-linkbook.docx" download="MJC-READY_링크북.docx">⬇ Word 파일 내려받기 (.docx)</a>
+      <span class="dl__note">한글(HWP)에서도 열립니다 · 인쇄·결재용</span>
+    </p>
   </header>
 
   <h2 class="group">서비스 화면</h2>
@@ -176,12 +186,17 @@
     <div class="card__body">
       <div class="card__head">
         <h3 class="card__title">잡카페 워크스페이스</h3>
-        <span class="chip chip--warn">상담사 전용 · 주소 비공개</span>
+        <span class="chip chip--warn">상담사 전용 · 내부 배포</span>
       </div>
       <p class="card__desc">상담사·상담사 관리자용 — 연락 우선 큐, 통합 상담 카드, 외부기관 연계, 취업상태 관리.</p>
-      <p class="card__note">이 페이지에는 주소를 싣지 않습니다. 상담사 계열 계정으로 로그인하면 자동으로 이동하며,
-        주소가 필요하면 AI융합진로지원센터에 개별 요청해 주세요. (2026-09-02 — 공개 배포 페이지에서 히든 주소 제거)</p>
+      <div class="urlrow">
+        <a class="url" href="https://monatory.github.io/mjc-jobready-pwa/#/counsel">https://monatory.github.io/mjc-jobready-pwa/#/counsel</a>
+        <button class="copy" data-url="https://monatory.github.io/mjc-jobready-pwa/#/counsel">복사</button>
+      </div>
+      <p class="card__note">상담사 계열 계정으로 로그인해야 열립니다. 학생·외부에 배포하지 마세요. (2026-09-03 — 내부 배포용으로 주소 재공개)</p>
     </div>
+    <figure class="qr" role="img" aria-label="잡카페 워크스페이스 QR 코드"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" shape-rendering="crispEdges"><path fill="none" d="M0 0h33v33H0z"/><path stroke="currentColor" d="M0 0.5h7m3 0h1m1 0h1m3 0h2m1 0h3m1 0h1m2 0h7M0 1.5h1m5 0h1m2 0h2m1 0h1m2 0h1m8 0h1m1 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m1 0h5m1 0h1m3 0h1m2 0h2m3 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h4m6 0h2m4 0h1m1 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m1 0h5m1 0h3m1 0h3m2 0h2m1 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m1 0h2m1 0h1m1 0h1m6 0h1m1 0h1m3 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h1m5 0h1m1 0h1m3 0h4M0 8.5h1m1 0h5m3 0h1m2 0h1m3 0h1m4 0h2m2 0h5M0 9.5h1m1 0h2m1 0h1m1 0h1m2 0h2m1 0h1m2 0h5m1 0h2m2 0h2m1 0h2m1 0h1M1 10.5h1m2 0h3m1 0h2m1 0h1m1 0h5m4 0h1m3 0h1m1 0h1m1 0h2M0 11.5h1m3 0h2m4 0h1m2 0h1m1 0h4m1 0h3m1 0h2m2 0h5M0 12.5h2m2 0h3m1 0h1m2 0h2m1 0h1m1 0h1m5 0h1m1 0h1m3 0h2m1 0h2M0 13.5h2m2 0h2m1 0h3m1 0h2m2 0h1m2 0h4m1 0h2m1 0h1m3 0h3M0 14.5h5m1 0h1m2 0h3m1 0h1m1 0h4m1 0h1m4 0h3m3 0h1M0 15.5h2m2 0h1m2 0h1m1 0h1m1 0h5m2 0h2m1 0h1m2 0h3m2 0h2M1 16.5h1m1 0h5m1 0h1m5 0h1m1 0h2m1 0h1m1 0h1m1 0h2m1 0h3m2 0h1M1 17.5h1m1 0h2m2 0h2m1 0h1m1 0h3m1 0h1m1 0h6m2 0h2m1 0h2m1 0h1M1 18.5h1m2 0h1m1 0h1m2 0h2m2 0h4m1 0h1m1 0h1m3 0h5m1 0h2M1 19.5h1m5 0h3m4 0h1m1 0h1m4 0h3m1 0h1m1 0h4m1 0h1M0 20.5h1m2 0h1m2 0h3m5 0h1m3 0h3m1 0h4m1 0h3m2 0h1M0 21.5h4m1 0h1m4 0h3m1 0h4m1 0h2m2 0h1m1 0h2m3 0h1m1 0h1M0 22.5h1m2 0h1m1 0h3m2 0h1m2 0h2m2 0h1m3 0h1m3 0h2m4 0h1M0 23.5h1m1 0h1m1 0h1m4 0h2m1 0h1m3 0h1m1 0h6m1 0h1m1 0h1m1 0h3M0 24.5h1m1 0h1m1 0h1m1 0h1m2 0h2m1 0h3m2 0h1m1 0h1m4 0h5m2 0h1M8 25.5h2m2 0h1m4 0h4m3 0h1m3 0h1m1 0h1m1 0h1M0 26.5h7m2 0h2m1 0h2m1 0h3m2 0h1m1 0h3m1 0h1m1 0h1m1 0h2M0 27.5h1m5 0h1m1 0h7m1 0h9m3 0h4M0 28.5h1m1 0h3m1 0h1m1 0h4m1 0h1m2 0h1m5 0h1m1 0h6m1 0h2M0 29.5h1m1 0h3m1 0h1m1 0h1m2 0h5m1 0h4m1 0h2m1 0h1m2 0h5M0 30.5h1m1 0h3m1 0h1m1 0h6m1 0h2m1 0h1m1 0h1m1 0h2m2 0h2m1 0h2M0 31.5h1m5 0h1m3 0h1m1 0h1m2 0h1m4 0h2m1 0h1m4 0h3M0 32.5h7m1 0h1m1 0h3m2 0h1m1 0h1m4 0h3m2 0h1m3 0h1"/></svg>
+<span class="qr__cap">상담사</span></figure>
   </div>
 
   <h2 class="group">개발 · 운영</h2>
