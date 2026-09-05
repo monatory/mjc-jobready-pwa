@@ -22,6 +22,10 @@ export interface StudentsData {
   source: StudentsSource;
   /** 스키마 불일치로 판정 불가해 제외된 실측 문서 수 — 배너에 표시(무음 스킵 금지, 감사 ENG-02) */
   skipped?: number;
+  /** 추천활동 Master 조회 실패 — 추천이 시드·캐시 기준으로 계산됐음을 배너로 알린다 (점검 M6) */
+  recoStale?: boolean;
+  /** 저장된 규칙 버전이 현재 번들과 다른 응답 수 — 재계산 결과가 학생이 본 것과 다를 수 있음 (점검 정보) */
+  versionMismatch?: number;
 }
 
 const mockData = (): StudentsData => ({ students: getMockStudents(), source: "MOCK" });
@@ -65,7 +69,15 @@ function restoreRecs(raw: ResponsePayload, level: number, weak: ReturnType<typeo
   return resolveRecommendations(level, weak, master, { today: todayStr() });
 }
 
-function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentRecord {
+type RawResponse = ResponsePayload & {
+  saved_at?: string;
+  semester?: string;
+  survey_version?: string;
+  diagnostic_version?: string;
+  rules_version?: string;
+};
+
+function toStudentRecord(raw: RawResponse, docId: string): StudentRecord {
   const result = evaluate(raw.survey, raw.diag, { surveyItems, diagnosticBank, levelRules }) as EvaluationResult;
   const weak = findWeakAreas(
     result.domainScores,
@@ -74,6 +86,9 @@ function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentR
   );
   const recs = restoreRecs(raw, result.level, weak);
   return {
+    // 실제 문서키 — 삭제·수정은 이 값을 쓴다. 예전엔 semester 필드로 키를 재구성해 결측 문서는 엉뚱한 키를
+    // 지우고도 "삭제했습니다"로 보고됐다 (점검 N6)
+    doc_id: docId,
     student_id: raw.profile.student_id,
     name: raw.profile.name,
     // 콘솔 수기 문서의 학과·학년 결측은 빈 문자열로 — "정보 수정" 버튼이 startsWith에서 throw 하던 것 (점검 A15)
@@ -91,8 +106,14 @@ function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentR
     completed_at: raw.saved_at ?? "",
     consent_at: raw.consent?.at ?? "", // 동의 시각 — 구버전(2026-09-03 이전) 응답은 없음
     counsel_requested_at: raw.counsel_request?.at ?? "", // 결과지 상담 신청 버튼 (2026-09-05)
+    // 응시 시점 버전 — CSV 버전 컬럼은 현재 번들이 아니라 이 값을 쓴다 (점검 낮음)
+    survey_version: raw.survey_version ?? "",
+    diagnostic_version: raw.diagnostic_version ?? "",
+    rules_version: raw.rules_version ?? "",
   };
 }
+
+const CURRENT_RULES_VERSION = (levelRules as { version?: string }).version ?? "";
 
 /**
  * 학생 응답 삭제 — 마스터 전용 (2026-09-05 사용자 요구: 시범 운영 시작 전 테스트 응답 정리).
@@ -111,34 +132,40 @@ export async function deleteStudentResponses(
   try {
     await authReady();
     const db = getDb();
-    const targets = [
-      ...recs.map((r) => doc(db, COL.responses, `${r.semester || SEMESTER}_${r.student_id}`)),
-      ...outreachIds.map((id) => doc(db, COL.outreach, id)),
-    ];
-    // Firestore 배치 상한(500) 아래로 나눠 커밋 — 한 묶음이 실패하면 그 묶음은 통째로 남는다(원자성)
+    // 실제 문서키(doc_id) 사용 — 구버전 레코드에 doc_id가 없을 때만 재구성 (점검 N6)
+    const responseRefs = recs.map((r) => doc(db, COL.responses, r.doc_id || `${r.semester || SEMESTER}_${r.student_id}`));
+    const outreachRefs = outreachIds.map((id) => doc(db, COL.outreach, id));
+    const targets = [...responseRefs, ...outreachRefs];
+    // Firestore 배치 상한(500) 아래로 나눠 커밋 — 한 묶음이 실패하면 그 묶음은 통째로 남는다(원자성).
+    // 뒤 묶음이 실패해도 앞 묶음은 이미 지워졌으므로 완료 건수를 세어 부분 성공을 알린다 (점검 M8)
     const CHUNK = 200;
     let done = 0;
-    for (let i = 0; i < targets.length; i += CHUNK) {
-      const batch = writeBatch(db);
-      targets.slice(i, i + CHUNK).forEach((ref) => batch.delete(ref));
-      await batch.commit();
-      done += Math.min(CHUNK, targets.length - i);
+    try {
+      for (let i = 0; i < targets.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        targets.slice(i, i + CHUNK).forEach((ref) => batch.delete(ref));
+        await batch.commit();
+        done += Math.min(CHUNK, targets.length - i);
+      }
+    } catch (e) {
+      const code = (e as { code?: string })?.code ?? "";
+      const deletedResponses = Math.min(done, responseRefs.length);
+      if (deletedResponses > 0) removeOutreachLocal(outreachIds.slice(0, Math.max(0, done - responseRefs.length)));
+      invalidateStudentsCache(); // 일부 묶음만 지워졌을 수 있으므로 목록을 다시 받는다
+      return {
+        ok: false,
+        deleted: deletedResponses,
+        message:
+          code === "permission-denied"
+            ? `삭제 권한이 없습니다 — 마스터 계정으로 로그인했는지, 규칙이 게시됐는지 확인해 주세요.${deletedResponses ? ` (앞의 ${deletedResponses}건은 이미 삭제됨)` : ""}`
+            : `삭제 중 오류가 났습니다 — 응답 ${deletedResponses}건은 삭제됐고 나머지는 남아 있습니다. 목록을 새로고침한 뒤 남은 건을 다시 삭제해 주세요.`,
+      };
     }
     removeOutreachLocal(outreachIds);
     invalidateStudentsCache();
-    void done;
     return { ok: true, deleted: recs.length, message: `응답 ${recs.length}건을 삭제했습니다.` };
-  } catch (e) {
-    const code = (e as { code?: string })?.code ?? "";
-    invalidateStudentsCache(); // 일부 묶음만 지워졌을 수 있으므로 목록을 다시 받는다
-    return {
-      ok: false,
-      deleted: 0,
-      message:
-        code === "permission-denied"
-          ? "삭제 권한이 없습니다 — 마스터 계정으로 로그인했는지, 규칙이 게시됐는지 확인해 주세요."
-          : "삭제 중 오류가 났습니다. 네트워크 상태를 확인하고 목록을 새로고침한 뒤 다시 시도해 주세요.",
-    };
+  } catch {
+    return { ok: false, deleted: 0, message: "삭제를 시작하지 못했습니다. 로그인·네트워크 상태를 확인해 주세요." };
   }
 }
 
@@ -152,18 +179,19 @@ async function fetchStudents(): Promise<StudentsData> {
     // 추천활동 Master를 먼저 받아야 학생별 추천이 최신 목록으로 계산된다. 이걸 빼면 관리자가
     // 활동을 등록·수정해도 명단·상세·CSV가 시드 기준으로 남는다 (2026-09-02 점검 [높음-1]).
     // 실패해도 학생 조회는 진행 — 추천만 시드·캐시 기준이 된다.
-    await pullRecoMaster();
+    const recoState = await pullRecoMaster();
     const snap = await getDocs(collection(getDb(), COL.responses));
     const students: StudentRecord[] = [];
     let skipped = 0;
     snap.forEach((d) => {
       try {
-        students.push(toStudentRecord(d.data() as ResponsePayload));
+        students.push(toStudentRecord(d.data() as RawResponse, d.id));
       } catch {
         skipped += 1; // 스키마 불일치 — 무음 삭제 대신 집계해 배너에 표시
       }
     });
-    return { students, source: "CLOUD", skipped };
+    const versionMismatch = students.filter((s) => s.rules_version && s.rules_version !== CURRENT_RULES_VERSION).length;
+    return { students, source: "CLOUD", skipped, recoStale: recoState === "FAIL", versionMismatch };
   } catch {
     // 미로그인·Rules 미배포·쿼터 초과 — mock으로 위장하지 않고 오류 상태를 그대로 표시
     return { students: [], source: "ERROR" };
@@ -201,8 +229,9 @@ export async function updateStudentProfile(
     const auth = getAuthInst();
     if (!auth.currentUser) return { ok: false, message: "로그인 상태를 확인해 주세요." };
     const db = getDb();
-    const sem = rec.semester || SEMESTER;
-    const oldId = `${sem}_${rec.student_id}`;
+    // 실제 문서키(doc_id)를 쓴다 — semester 필드 결측 문서는 재구성 키가 실제와 달라 "문서 없음"이 났다 (점검 N6)
+    const oldId = rec.doc_id || `${rec.semester || SEMESTER}_${rec.student_id}`;
+    const sem = oldId.endsWith(`_${rec.student_id}`) ? oldId.slice(0, oldId.length - rec.student_id.length - 1) : rec.semester || SEMESTER;
     const newStudentId = patch.student_id.trim();
     const newId = `${sem}_${newStudentId}`;
     // (2026-09-03 점검 A1) 상담 기록(ready_outreach)은 상담사 계열만 쓸 수 있다. 담당자(행정)가

@@ -17,6 +17,18 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
     console.error("[MJC-READY] 화면 렌더 오류", error, info.componentStack);
   }
 
+  // 다른 화면(해시 라우트)으로 이동하면 오류 상태를 풀어 준다 — 예전엔 한 번 깨지면 새로고침 전까지
+  // 모든 라우트가 오류 화면이었다 (점검 낮음)
+  private onHashChange = () => {
+    if (this.state.error) this.setState({ error: null });
+  };
+  componentDidMount(): void {
+    window.addEventListener("hashchange", this.onHashChange);
+  }
+  componentWillUnmount(): void {
+    window.removeEventListener("hashchange", this.onHashChange);
+  }
+
   render() {
     if (!this.state.error) return this.props.children;
     return (

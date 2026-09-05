@@ -113,13 +113,18 @@ export default function CounselRecord({
   const refAgencies = agencies.filter((a) => a.type === "AGENCY");
   const employers = agencies.filter((a) => a.type === "EMPLOYER");
   const selectedAgency = agencies.find((a) => a.id === refAgency);
-  // 기록이 참조하는 기관이 등록부에서 삭제·구분 변경됐으면 select가 빈칸처럼 보이면서 옛 id가 그대로
-  // 저장되던 문제 (점검 C9) — 명시적으로 보여 주고, 연계 완료 이후 단계 저장은 재선택을 요구한다
-  const refAgencyStale = Boolean(refAgency) && !refAgencies.some((a) => a.id === refAgency);
+  // 기록이 참조하는 기관이 등록부에서 **삭제**됐으면 select가 빈칸처럼 보이면서 옛 id가 그대로 저장되던
+  // 문제 (점검 C9) — 명시적으로 보여 주고, 연계 완료 이후 단계 저장은 재선택을 요구한다.
+  // 구분만 바뀐 기관(연계기관→취업처)은 삭제가 아니다 — 예전엔 삭제로 오판해 저장을 막았다 (점검 N10).
+  // 그 경우 선택지에 그대로 두고 표시만 붙인다.
+  const refAgencyStale = Boolean(refAgency) && !agencies.some((a) => a.id === refAgency);
+  const refAgencyRetyped = Boolean(selectedAgency) && selectedAgency!.type !== "AGENCY";
+  // 다음 회차 번호는 "가장 큰 회차 + 1" — 중간 회차를 삭제하면 배열 길이+1과 달라진다 (점검 낮음)
+  const nextSeq = sessions.reduce((m, s) => (Number.isFinite(s.seq) ? Math.max(m, s.seq) : m), 0) + 1;
 
   const saveContact = () => void doSave({ status, memo }, undefined, "연락 기록 저장됨");
   const addSession = () => {
-    if (!sessContent.trim()) return;
+    if (!sessContent.trim() || saving) return; // Enter 키가 버튼 잠금(saving)을 우회하던 것 (점검 낮음)
     // 회차 번호는 저장 시점의 "원격 최신 배열" 기준으로 부여(cloudStore 병합) — 동시 편집 시 중복·소실 방지
     void doSave({}, { add: { date: sessDate, content: sessContent.trim(), by } }, "회차 기록 저장됨");
     setSessContent("");
@@ -275,7 +280,7 @@ export default function CounselRecord({
           <input className="input session-add__date" type="date" value={sessDate} onChange={(e) => setSessDate(e.target.value)} />
           <input
             className="input session-add__content"
-            placeholder={`${sessions.length + 1}회차 상담 내용`}
+            placeholder={`${nextSeq}회차 상담 내용`}
             value={sessContent}
             onChange={(e) => setSessContent(e.target.value)}
             // 한글 IME 조합 중 Enter는 무시 — 조합 확정 Enter가 회차를 이중 등록할 수 있다 (점검 C6)
@@ -322,6 +327,9 @@ export default function CounselRecord({
               <select className="input" value={refAgency} onChange={(e) => setRefAgency(e.target.value)}>
                 <option value="">— 기관 선택 —</option>
                 {refAgencyStale && <option value={refAgency}>(삭제된 기관 — 다시 선택해 주세요)</option>}
+                {refAgencyRetyped && selectedAgency && (
+                  <option value={selectedAgency.id}>{selectedAgency.name} (취업처로 구분 변경됨)</option>
+                )}
                 {refAgencies.map((a) => (
                   <option key={a.id} value={a.id}>{a.name}{a.program ? ` · ${a.program}` : ""}</option>
                 ))}

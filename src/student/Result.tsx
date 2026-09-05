@@ -16,7 +16,7 @@ import {
   domainLabels,
   diagItems,
 } from "../lib/dataLoader";
-import { getMasterSync, pullRecoMasterForStudent, type RecoActivity } from "../lib/recoMaster";
+import { getMasterSync, pullRecoMasterForStudent, onRecoMasterChanged, type RecoActivity } from "../lib/recoMaster";
 import { getProfile, getSurvey, getDiag, clearAll, getCounselRequest, setCounselRequest } from "../lib/sessionState";
 import { todayStr } from "../lib/dates";
 
@@ -110,8 +110,16 @@ export default function Result() {
       setRecoMaster({ activities: m.activities });
       setRecoStale(m.stale);
     });
+    // 6초 타임아웃 뒤 늦게 도착한 최신 목록도 반영한다 — 예전엔 구독이 없어 시드 기준 추천이 화면·제출
+    // 스냅샷에 그대로 굳었다 (점검 M2). 목록이 바뀌면 payload가 바뀌어 자동 재제출된다.
+    const unsub = onRecoMasterChanged(() => {
+      if (cancelled) return;
+      setRecoMaster(getMasterSync());
+      setRecoStale(false);
+    });
     return () => {
       cancelled = true;
+      unsub();
     };
   }, []);
 
@@ -141,6 +149,18 @@ export default function Result() {
   const [counselReq, setCounselReq] = useState(() => getCounselRequest());
   const requestCounsel = () => {
     if (!counselReq) setCounselReq(setCounselRequest());
+    // 제출이 막힌 상태(형식 오류·규칙 거부·네트워크 실패)나 로컬 모드에서는 "연락드립니다"를 확정적으로
+    // 안내하지 않는다 — 기록은 남지만 학교에 전달되지 않을 수 있다 (점검 M1)
+    if (submitState === "NO_PROFILE" || submitState === "DENIED" || submitState === "FAIL") {
+      window.alert(
+        "상담 신청을 기록했지만, 이 응답이 아직 학교에 제출되지 않았습니다. 아래 안내에 따라 제출 문제를 먼저 해결해 주세요. 제출이 완료되면 신청도 함께 전달됩니다."
+      );
+      return;
+    }
+    if (submitState === "OFF") {
+      window.alert("시범(로컬) 모드라 신청이 서버로 전달되지 않습니다. 잡카페(본관 1층)로 직접 방문하거나 연락해 주세요.");
+      return;
+    }
     window.alert(
       counselReq
         ? "이미 상담을 신청하셨어요. 잡카페 컨설턴트가 입력하신 연락처로 연락드립니다. 바로 방문(본관 1층)하셔도 됩니다."
@@ -246,6 +266,8 @@ export default function Result() {
   const tpl = isNonEmployment
     ? templates.route_overrides.FURTHER_STUDY_STARTUP
     : templates.levels[String(r.level)];
+  // Route 표기 3분기 — 진로방향 "미정"(UNDECIDED)이 이진 분기 탓에 "취업준비 Route"로 찍히던 문제 (점검 N7)
+  const routeLabel = isNonEmployment ? "진학·창업 Route" : r.routeTag === "UNDECIDED" ? "진로탐색 Route" : "취업준비 Route";
 
   const { weak, recs } = analysis; // hasData·evalResult·analysis 보장 구간
 
@@ -258,7 +280,7 @@ export default function Result() {
           명지전문대학 학생지원처 취·창업팀 · MJC-READY 진로·취업 상태진단 결과지 (발급일 {todayStr()})
         </p>
         <section className={`card level-card level-card--l${r.level}`}>
-          <p className="level-card__route">{isNonEmployment ? "진학·창업 Route" : "취업준비 Route"}</p>
+          <p className="level-card__route">{routeLabel}</p>
           {/* Level은 Route와 무관하게 항상 표기한다 — 진학·창업 Route는 Route 제목만 보여 "레벨이 안 나온다"고
               보였다 (2026-09-05 사용자 보고). Route 제목은 부제로 내려 함께 보여 준다. */}
           <h1 className="level-card__title">{templates.levels[String(r.level)].title}</h1>

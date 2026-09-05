@@ -128,5 +128,9 @@ export function getResumeState(): "NONE" | "SURVEY" | "DIAG" | "RESULT" {
   // 문항 수는 데이터(diagnostic_bank)에서 — 27 하드코딩 금지 (§4)
   if (Object.keys(diag).length > 0) return Object.keys(diag).length >= diagItems.length ? "RESULT" : "DIAG";
   if (Object.keys(survey).length > 0) return "SURVEY";
+  // 기본정보(학번·성명·휴대전화)만 입력하고 이탈한 경우도 "진행 중"으로 본다 — 예전엔 NONE이라
+  // 재개 모달 없이 다음 사용자(공용 PC)의 설문 칸에 이전 학생 개인정보가 그대로 채워졌다 (점검 N8)
+  const profile = getProfile();
+  if (profile && Object.values(profile).some((v) => typeof v === "string" && v.trim() !== "")) return "SURVEY";
   return "NONE";
 }

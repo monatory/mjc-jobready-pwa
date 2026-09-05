@@ -113,6 +113,9 @@ function isValidActivity(o: unknown): o is RecoActivity {
   );
 }
 
+/** 추천 코드 형식 — firestore.rules validReco·RecoMasterPanel CODE_PATTERN과 동일 */
+const CODE_RE = /^[A-Z][A-Z0-9_]{2,39}$/;
+
 /** 마지막 병합에서 형태 불량으로 제외된 문서 코드 — 관리자 화면이 경고로 표시 */
 let droppedCodes: string[] = [];
 /** 문서키 ≠ recommendation_code 로 무시한 문서 id (콘솔 수기 생성분, 점검 RECO-04) */
@@ -162,6 +165,12 @@ function applyDocs(snap: { forEach(cb: (d: { id: string; data(): unknown }) => v
     // 문서키와 recommendation_code가 다르면 어느 쪽이 키인지 알 수 없다 — 규칙(validReco)이 막지만
     // 규칙 게시 전·콘솔 수기 문서는 통과했을 수 있다. 무시하고 관리자 화면에 알린다 (점검 RECO-04)
     if (data && typeof data === "object" && "recommendation_code" in data && data.recommendation_code !== d.id) {
+      mismatched.push(d.id);
+      return;
+    }
+    // 문서키가 코드 형식(영대문자 시작·대문자·숫자·_ 3~40자, 규칙 validReco와 동일)이 아니면 제외 — 소문자 코드로
+    // 만든 콘솔 문서가 시드(대문자)와 별개 활동으로 중복 등록되던 것 (점검 M10)
+    if (!CODE_RE.test(d.id)) {
       mismatched.push(d.id);
       return;
     }

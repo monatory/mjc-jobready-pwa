@@ -48,8 +48,10 @@ export default function Survey() {
 
   // 기본정보 5칸의 개별 유효성 — 오류 시 칸별 표시(점검 S8)와 전체 진행 판정이 같은 값을 쓴다
   const fieldOk = useMemo(() => {
-    // 휴대전화는 상담사가 먼저 연락하는 시스템의 핵심 채널 — 필수 (숫자 10~11자리)
-    const phone = /^01[0-9]-?\d{3,4}-?\d{4}$/.test(profile.phone.trim());
+    // 휴대전화는 상담사가 먼저 연락하는 시스템의 핵심 채널 — 필수 (숫자 10~11자리).
+    // 구분자는 제출 시 normalizePhone이 정리하므로 숫자만 추려 검사한다 — "010.1234.5678"·공백 입력이
+    // 정규화 가능한데도 검증에서 막히던 문제 (점검 낮음)
+    const phone = /^01[0-9]\d{7,8}$/.test(profile.phone.replace(/\D/g, ""));
     // 학번: 영숫자 4~20자 — 서버 규칙(firestore.rules validResponse)과 동일 조건.
     // 불일치하면 전 과정을 마치고 제출만 영구 실패했다 (감사 S2-02·F12)
     const id = /^[A-Za-z0-9]{4,20}$/.test(profile.student_id.trim());
@@ -78,7 +80,10 @@ export default function Survey() {
   const pickUnscored = (key: string, value: string) =>
     setUnscoredState((prev) => ({ ...prev, [key]: value }));
 
-  const addCert = () => setCertsState((prev) => [...prev, { cert_name: "", status: "PREPARING" }]);
+  // 자격증 행 상한 — 무한 추가로 문서가 비대해지는 것을 막는다 (점검 낮음)
+  const MAX_CERTS = 20;
+  const addCert = () =>
+    setCertsState((prev) => (prev.length >= MAX_CERTS ? prev : [...prev, { cert_name: "", status: "PREPARING" }]));
   const updateCert = (i: number, patch: Partial<CertEntry>) =>
     setCertsState((prev) => prev.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const removeCert = (i: number) => setCertsState((prev) => prev.filter((_, j) => j !== i));
@@ -383,8 +388,8 @@ export default function Survey() {
                 </button>
               </div>
             ))}
-            <button type="button" className="btn btn--ghost" onClick={addCert}>
-              + 자격증 추가
+            <button type="button" className="btn btn--ghost" onClick={addCert} disabled={certs.length >= MAX_CERTS}>
+              + 자격증 추가{certs.length >= MAX_CERTS ? ` (최대 ${MAX_CERTS}개)` : ""}
             </button>
           </div>
         </section>

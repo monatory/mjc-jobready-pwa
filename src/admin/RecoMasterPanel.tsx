@@ -24,6 +24,8 @@ const OWNER_LABELS: Record<RecoActivity["owner"], string> = {
 };
 
 const CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,39}$/;
+/** UTF-8 바이트 수 — Firestore 규칙의 string.size()와 같은 단위 (한글 1자 = 3바이트, 점검 N13) */
+const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
 
 /** YYYY-MM-DD 두 날짜의 일수 차 (만료 임박 판정용, 로컬 기준 문자열 비교와 함께 사용) */
 function daysBetween(from: string, to: string): number {
@@ -138,9 +140,10 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
     if (editing === "NEW" && list.some((a) => a.recommendation_code === code))
       return `이미 등록된 코드입니다: ${code}`;
     if (!f.name.trim()) return "활동명을 입력해 주세요.";
-    // 길이 상한은 서버 규칙(validReco: name ≤100자, student_desc ≤500자)과 동일 — 화면에서 먼저 걸러
-    // 규칙 거부가 "저장 실패(네트워크·권한 확인)"로 오안내되지 않게 (점검 ADM-05)
-    if (f.name.trim().length > 100) return "활동명은 100자 이내로 입력해 주세요.";
+    // 길이 상한은 서버 규칙(validReco: name.size() ≤100, student_desc.size() ≤500)과 동일 기준 — 규칙의
+    // size()는 UTF-8 **바이트** 수라 한글은 글자당 3바이트다. 문자 수로 검사하면 한글 34자부터 규칙에 거부돼
+    // "저장 실패(네트워크 확인)"로 오안내됐다 (점검 N13). 화면도 바이트로 검사하고 한글 기준 글자 수를 안내한다.
+    if (utf8Bytes(f.name.trim()) > 100) return "활동명이 너무 깁니다 — 한글 기준 약 33자(100바이트) 이내로 줄여 주세요.";
     if (f.levels.length === 0) return "적용 Level을 1개 이상 선택해 주세요.";
     if (f.weak_domains.length === 0) return "취약영역을 1개 이상 선택해 주세요. (특정 영역과 무관하면 '전체(범용)')";
     if (!(f.priority >= 1 && f.priority <= 5)) return "우선순위는 1(높음)~5(낮음) 사이여야 합니다.";
@@ -150,7 +153,7 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
     if (f.active && f.active_to < todayStr())
       return `활성 종료일(${f.active_to})이 이미 지났습니다. 기간을 연장하거나 "활성" 체크를 해제해 주세요.`;
     if (!f.student_desc.trim()) return "학생 노출 설명을 입력해 주세요. (결과지에 그대로 표시됩니다)";
-    if (f.student_desc.trim().length > 500) return "학생 노출 설명은 500자 이내로 입력해 주세요.";
+    if (utf8Bytes(f.student_desc.trim()) > 500) return "학생 노출 설명이 너무 깁니다 — 한글 기준 약 166자(500바이트) 이내로 줄여 주세요.";
     return "";
   };
 

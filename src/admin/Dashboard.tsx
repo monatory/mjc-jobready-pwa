@@ -33,7 +33,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [session, setSession] = useState<AdminSession | null>(getSession);
   // 로그인 게이트 통과 후에만 실명 응답을 조회 (점검 SEC-02)
-  const { students, source, skipped } = useStudents(Boolean(session)); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 P3-04)
+  const { students, source, skipped, recoStale, versionMismatch } = useStudents(Boolean(session)); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 P3-04)
   const dataReady = source === "CLOUD" || source === "MOCK"; // 조회 중·실패면 다운로드 잠금 (점검 A12)
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
@@ -118,6 +118,9 @@ export default function Dashboard() {
       {periodOn ? (
         <>
           <span className="period-bar__on">적용 중 — {periodStudents.length}명 / 전체 {students.length}명</span>
+          {period.from && period.to && period.from > period.to && (
+            <span className="muted small" style={{ color: "#b42318" }}>⚠ 시작일이 종료일보다 늦습니다 — 0명으로 집계됩니다</span>
+          )}
           <button className="btn btn--ghost btn--sm" onClick={() => setPeriod({ from: "", to: "" })}>
             전체 기간으로
           </button>
@@ -207,6 +210,9 @@ export default function Dashboard() {
         <div className="admin__banner">
           {source === "CLOUD" &&
             `실측 데이터 — Firebase에 저장된 학생 응답 ${students.length}건을 표시 중입니다.${skipped ? ` (형식 오류로 제외 ${skipped}건 — 마스터에게 문의)` : ""}`}
+          {/* 추천 Master 조회 실패·규칙 버전 불일치는 숨기지 않는다 (점검 M6·정보) */}
+          {source === "CLOUD" && recoStale && " ⚠ 추천활동 목록을 최신으로 받지 못해 명단·CSV의 추천은 기본 목록 기준입니다 — 새로고침해 주세요."}
+          {source === "CLOUD" && !!versionMismatch && ` ※ 규칙 버전이 현재와 다른 응답 ${versionMismatch}건 — 학생이 본 결과와 재계산 값이 다를 수 있습니다.`}
           {source === "LOADING" && "데이터 불러오는 중… (공유 저장소 조회)"}
           {source === "ERROR" &&
             "⚠ 학생 응답 조회 실패 — 네트워크·로그인·규칙 게시 상태를 확인한 뒤 새로고침해 주세요. (실측 데이터가 있어도 지금은 표시되지 않습니다)"}

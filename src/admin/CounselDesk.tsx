@@ -27,7 +27,7 @@ export default function CounselDesk() {
   const navigate = useNavigate();
   const [session, setSession] = useState<AdminSession | null>(getSession);
   // 로그인 게이트 통과 후에만 실명 응답을 조회 (점검 SEC-02)
-  const { students, source, skipped } = useStudents(Boolean(session)); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 C4-09)
+  const { students, source, skipped, recoStale } = useStudents(Boolean(session)); // 클라우드 모드 = 실측만 (mock 위장 금지 — 감사 C4-09)
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("students");
   const [folded, toggleFold] = useSidebarFold();
@@ -127,7 +127,12 @@ export default function CounselDesk() {
             )}
             <button
               className="btn btn--ghost btn--sm"
-              onClick={() => { logout(); setSession(null); setSection("students"); }}
+              onClick={() => {
+                logout();
+                setSession(null);
+                setSection("students");
+                setCloudState(CLOUD_ENABLED ? null : "LOCAL"); // 재로그인 직후 직전 세션의 연결 상태가 먼저 보이던 것 (점검 M11)
+              }}
             >
               로그아웃
             </button>
@@ -154,6 +159,7 @@ export default function CounselDesk() {
               ? "☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다."
               : "⚠ 공유 저장소 미연결(네트워크·권한·설정 확인) — 지금 저장하는 기록은 이 브라우저에만 보관되며 다른 상담사에게 공유되지 않습니다."}{" "}
           {source === "CLOUD" && `(실측 응답 ${students.length}건${skipped ? ` · 형식 오류 제외 ${skipped}건` : ""})`}
+          {source === "CLOUD" && recoStale && " ⚠ 추천활동 목록을 최신으로 받지 못해 추천은 기본 목록 기준입니다 — 새로고침해 주세요."}
           {source === "ERROR" && "⚠ 학생 응답 조회 실패 — 명단이 비어 보이면 아래 새로고침을 누르거나 네트워크·로그인 상태를 확인하세요."}
         </div>
 

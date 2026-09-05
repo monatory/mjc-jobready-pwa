@@ -148,7 +148,8 @@ export default function Start() {
             <h3>진행 중이던 진단이 있습니다</h3>
             <p>이어서 진행할까요, 처음부터 다시 시작할까요?</p>
             <div className="modal__actions">
-              <button className="btn btn--primary" onClick={continueTo}>
+              {/* 모달이 뜨면 포커스를 안으로 — 키보드가 배후 동의 체크박스로 먼저 가던 것 (점검 낮음) */}
+              <button className="btn btn--primary" onClick={continueTo} autoFocus>
                 이어서 진행
               </button>
               <button

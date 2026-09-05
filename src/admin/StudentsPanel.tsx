@@ -1,7 +1,7 @@
 // 대상자 필터·명단 패널 — 관리자(#/admin)와 상담사 워크스페이스(#/counsel) 공용.
 // showOutreach=true(상담사 전용)일 때만 연락 우선 큐·연락상태·상담 메모가 나타난다.
 // 담당자(행정)에게는 연락 기록이 화면·CSV 어디에도 노출되지 않는다 (2026-08-30 사용자 확정).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { surveyAnswerLabel, wantsCounsel, type StudentRecord } from "./mockStudents";
 import { useStudents, inPeriod, updateStudentProfile, deleteStudentResponses } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
@@ -146,12 +146,13 @@ const PRESETS: Array<{ key: string; label: string; fn: (s: StudentRecord) => boo
   { key: "route", label: "진학·창업 Route", fn: (s) => s.result.routeTag === "FURTHER_STUDY_STARTUP" },
 ];
 
-/** "오늘 연락할 학생" 판정 — 상담희망 또는 L3+ 이면서 미연락·무응답 (진학·창업 Route 제외) */
+/** "오늘 연락할 학생" 판정 — 상담희망(설문 또는 결과지 신청) 또는 [L3+ 이면서 취업 Route] 이면서 미연락·무응답.
+ *  진학·창업 Route 제외는 L3+ 자동 발굴에만 적용한다 — 예전엔 상담을 직접 신청한 진학·창업 학생까지
+ *  큐에서 빠졌다 (점검 N4). 학생이 명시적으로 상담을 원하면 Route와 무관하게 연락 대상이다. */
 export const needsOutreachWith =
   (outreach: Record<string, OutreachEntry>) =>
   (s: StudentRecord): boolean =>
-    (wantsCounsel(s) || s.result.level >= 3) &&
-    s.result.routeTag !== "FURTHER_STUDY_STARTUP" &&
+    (wantsCounsel(s) || (s.result.level >= 3 && s.result.routeTag !== "FURTHER_STUDY_STARTUP")) &&
     ["NONE", "NO_RESPONSE"].includes(statusOf(outreach, s.student_id));
 
 export default function StudentsPanel({
@@ -225,11 +226,10 @@ export default function StudentsPanel({
   const [delMsg, setDelMsg] = useState<{ text: string; ok: boolean } | null>(null);
   /** 삭제 대상 응답들과 함께 지울 상담 기록 학번 — 그 학번의 응답이 **전부** 삭제 대상일 때만 (다학기 보호) */
   const outreachIdsFor = (targets: StudentRecord[]): string[] => {
-    const targetKeys = new Set(targets.map((t) => `${t.semester}_${t.student_id}`));
+    // 실제 문서키(doc_id) 기준 — semester 결측 문서 두 건이 같은 키로 뭉쳐 다학기 보호가 풀리던 것 (점검 N6)
+    const targetKeys = new Set(targets.map((t) => t.doc_id));
     const ids = new Set(targets.map((t) => t.student_id));
-    return [...ids].filter((id) =>
-      students.filter((s) => s.student_id === id).every((s) => targetKeys.has(`${s.semester}_${s.student_id}`))
-    );
+    return [...ids].filter((id) => students.filter((s) => s.student_id === id).every((s) => targetKeys.has(s.doc_id)));
   };
   const runDelete = async (targets: StudentRecord[]) => {
     setDelBusy(true);
@@ -241,7 +241,9 @@ export default function StudentsPanel({
   };
   const deleteOne = async (s: StudentRecord) => {
     if (!window.confirm(`'${s.name}(${s.student_id})' 학생의 ${s.semester || "이번 학기"} 응답을 삭제할까요?\n상담 기록도 함께 삭제되며(다른 학기 응답이 없을 때) 되돌릴 수 없습니다.`)) return;
-    if (await runDelete([s])) {
+    const ok = await runDelete([s]);
+    // 진행 중 모달을 닫고 다른 학생을 열었을 수 있다 — 지금 열린 모달이 같은 학생일 때만 닫는다 (점검 M9)
+    if (ok && detailRef.current?.doc_id === s.doc_id) {
       setDetail(null);
       setEditing(false);
       setCounselDirty(false);
@@ -259,6 +261,13 @@ export default function StudentsPanel({
   // ── 중복 의심 — 같은 휴대전화(또는 성명+학과)로 서로 다른 학번의 응답 (2026-09-05) ──
   const duplicates = useMemo(() => findDuplicates(students), [students]);
   const [dupOnly, setDupOnly] = useState(false);
+  // 중복을 전부 정리하면 칩을 자동으로 끈다 — 켠 채 0건이 되면 잠긴 칩 + 0명 화면에 갇혔다 (점검 M7)
+  useEffect(() => {
+    if (dupOnly && duplicates.size === 0) setDupOnly(false);
+  }, [dupOnly, duplicates]);
+  // 비동기 완료 콜백이 "지금 열린 모달"을 확인하는 데 쓰는 최신 detail 참조 (점검 M9)
+  const detailRef = useRef<StudentRecord | null>(null);
+  detailRef.current = detail;
 
   const saveEdit = async (s: StudentRecord) => {
     const grade = editForm.gradeSel === "졸업" ? `졸업${editForm.gradeYear.trim()}` : editForm.gradeSel;
@@ -284,9 +293,13 @@ export default function StudentsPanel({
     const patch = { student_id: id, name: editForm.name.trim(), dept: editForm.dept.trim(), grade, phone: normalizePhone(editForm.phone) };
     const r = await updateStudentProfile(s, patch, { canMoveId });
     setEditBusy(false);
+    // 저장 중 모달을 닫고 다른 학생을 열었으면 그 모달을 건드리지 않는다 (점검 M9)
+    if (detailRef.current?.doc_id !== s.doc_id) return;
     setEditMsg({ text: r.message, ok: r.ok });
     if (r.ok) {
-      setDetail({ ...s, ...patch }); // 모달 즉시 반영 — 목록은 캐시 무효화로 자동 재조회
+      // 학번이 바뀌면 문서키도 바뀐다 — 목록 재조회 전까지 모달이 새 키를 쓰게 맞춘다
+      const sem = s.doc_id.endsWith(`_${s.student_id}`) ? s.doc_id.slice(0, s.doc_id.length - s.student_id.length - 1) : s.semester;
+      setDetail({ ...s, ...patch, doc_id: `${sem}_${patch.student_id}` }); // 모달 즉시 반영 — 목록은 캐시 무효화로 자동 재조회
       setEditing(false);
     }
   };
@@ -414,7 +427,7 @@ export default function StudentsPanel({
         {/* 중복 의심 — 같은 휴대전화(또는 성명+학과)로 학번이 다른 응답. 표시만 하고 정리는 사람이 (2026-09-05) */}
         <button
           className={`chip ${dupOnly ? "chip--on" : ""}`}
-          disabled={duplicates.size === 0}
+          disabled={duplicates.size === 0 && !dupOnly}
           onClick={() => setDupOnly((v) => !v)}
           title="같은 휴대전화 또는 같은 성명·학과로 서로 다른 학번의 응답이 있는 학생 — 학번 오기입 재응시 의심"
         >
@@ -495,6 +508,9 @@ export default function StudentsPanel({
                 onChange={(e) => setAdv((prev) => ({ ...prev, jasMax: e.target.value }))}
               />
             </div>
+            {adv.jasMin !== "" && adv.jasMax !== "" && Number(adv.jasMin) > Number(adv.jasMax) && (
+              <span className="muted small" style={{ color: "#b42318" }}>⚠ 최소가 최대보다 큽니다 — 결과가 0명이 됩니다</span>
+            )}
           </label>
           {advFields.map(([field, label, opts]) => (
             <label className="adv-filter__field" key={field}>

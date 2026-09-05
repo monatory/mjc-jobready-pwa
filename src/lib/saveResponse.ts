@@ -38,9 +38,20 @@ function withTimeout<T>(p: Promise<T>): Promise<T> {
   ]);
 }
 
+// 제출 직렬화 — 결과지 최초 제출(SAVING) 중에 "상담 신청" 클릭으로 두 번째 제출이 겹치면 익명 로그인
+// 완료 순서에 따라 **신청이 빠진 옛 payload가 나중에 써져** 신청이 유실될 수 있었다 (2026-09-05 점검 N3).
+// 같은 탭의 제출은 항상 호출 순서대로 하나씩 처리한다.
+let chain: Promise<unknown> = Promise.resolve();
+
 /** 문서키 "{학기}_{학번}" — 같은 학기 재응시는 최신값으로 갱신 (§7.1) */
-export async function saveResponseToCloud(payload: ResponsePayload): Promise<SaveOutcome> {
-  if (!CLOUD_ENABLED) return "OFF";
+export function saveResponseToCloud(payload: ResponsePayload): Promise<SaveOutcome> {
+  if (!CLOUD_ENABLED) return Promise.resolve("OFF");
+  const run = chain.then(() => saveNow(payload));
+  chain = run.catch(() => undefined); // 앞 제출이 실패해도 다음 제출은 진행
+  return run;
+}
+
+async function saveNow(payload: ResponsePayload): Promise<SaveOutcome> {
   try {
     const auth = getStudentAuth();
     await withTimeout(authReadyFor(auth)); // 새로고침 직후 익명 세션 복원 대기
@@ -56,20 +67,26 @@ export async function saveResponseToCloud(payload: ResponsePayload): Promise<Sav
     };
     const docId = `${SEMESTER}_${studentId}`;
     const consent = getConsentInfo(); // Firestore는 undefined 값을 거부하므로 있을 때만 필드 추가
+    const data = {
+      ...payload,
+      ...(consent ? { consent } : {}),
+      profile: cleanProfile,
+      semester: SEMESTER,
+      auth_uid: auth.currentUser!.uid,
+      saved_at: new Date().toISOString(),
+      // 응시 시점의 문항·규칙 버전 기록 — 버전 개정 후에도 "그때 무엇으로 판정했는지" 추적 (감사 ENG-09)
+      survey_version: (surveyItems as { version?: string }).version ?? "",
+      diagnostic_version: (diagnosticBank as { version?: string }).version ?? "",
+      rules_version: (levelRules as { version?: string }).version ?? "",
+      schema_version: 2,
+    };
+    // mergeFields: 이번 제출이 담은 최상위 필드만 통째로 교체하고, 담지 않은 필드(다른 세션에서 남긴
+    // counsel_request, 관리자 교정 이력 profile_edited_*)는 보존한다. 예전엔 전체 덮어쓰기라 새 세션
+    // 재응시 한 번에 상담 신청 기록이 사라졌다 (2026-09-05 점검 N1). 맵(survey·unscored 등)은 필드
+    // 단위로 교체되므로 조건부 문항의 옛 값이 섞여 남지 않는다. 학생은 문서를 읽을 권한이 없어
+    // 읽기→비교→쓰기는 불가 — 이 방식이 규칙 안에서 가능한 최선.
     await withTimeout(
-      setDoc(doc(getStudentDb(), COL.responses, docId), {
-        ...payload,
-        ...(consent ? { consent } : {}),
-        profile: cleanProfile,
-        semester: SEMESTER,
-        auth_uid: auth.currentUser!.uid,
-        saved_at: new Date().toISOString(),
-        // 응시 시점의 문항·규칙 버전 기록 — 버전 개정 후에도 "그때 무엇으로 판정했는지" 추적 (감사 ENG-09)
-        survey_version: (surveyItems as { version?: string }).version ?? "",
-        diagnostic_version: (diagnosticBank as { version?: string }).version ?? "",
-        rules_version: (levelRules as { version?: string }).version ?? "",
-        schema_version: 2,
-      })
+      setDoc(doc(getStudentDb(), COL.responses, docId), data, { mergeFields: Object.keys(data) })
     );
     return "OK";
   } catch (e) {

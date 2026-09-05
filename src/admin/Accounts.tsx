@@ -13,6 +13,7 @@ import {
   setStaffStatusCloud,
   setStaffLeadCloud,
   removeStaffCloud,
+  restoreStaffCloud,
   createStaffCloud,
   createLocalAccount,
   setStaffRoleCloud,
@@ -71,8 +72,14 @@ export default function Accounts({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visible = accounts.filter((a) => roles.includes(a.role));
+  // 삭제(tombstone) 계정은 본 목록에서 빼고 아래 접힘 구역에 따로 — 복구 경로 제공 (점검 N16)
+  const visible = accounts.filter((a) => roles.includes(a.role) && a.status !== "DELETED");
+  const deleted = accounts.filter((a) => roles.includes(a.role) && a.status === "DELETED");
+  const [showDeleted, setShowDeleted] = useState(false);
   const pending = visible.filter((a) => a.status === "PENDING").length;
+  // 클라우드 설정인데 첫 조회가 실패해 로컬 목록으로 떨어진 상태 — 이때 "직접 등록"을 하면 이 브라우저에만
+  // 계정이 생기고 이메일 아이디는 영영 로그인이 안 된다 (점검 N17). 등록을 잠그고 재시도만 허용한다.
+  const cloudFallback = CLOUD_ENABLED && !loading && !cloudMode;
   // 내 계정 행에는 비활성·삭제·구분 이동 버튼을 두지 않는다 — 관리자(LEAD)가 자기 계정을 잠그면
   // UI로 되살릴 수단이 없다(2026-09-02 점검 C2, 라이브 실증). 서버 규칙도 같은 조건으로 거부한다.
   const myId = (getSession()?.id ?? "").toLowerCase();
@@ -82,12 +89,13 @@ export default function Accounts({
   // 상태·역할은 토글이 아니라 화면이 계산한 "목표값"을 기록 (감사 F16: 동시 처리 시 의도 반전 방지)
   const act = async (
     a: AdminAccount,
-    action: "approve" | "toggleActive" | "toggleLead" | "remove" | "reassign"
+    action: "approve" | "toggleActive" | "toggleLead" | "remove" | "reassign" | "restore"
   ) => {
     setActMsg(null);
     if (cloudMode && a.uid) {
       let ok = false;
       if (action === "approve") ok = await approveStaffCloud(a.uid);
+      if (action === "restore") ok = await restoreStaffCloud(a.uid);
       if (action === "toggleActive") ok = await setStaffStatusCloud(a.uid, a.status === "ACTIVE" ? "DISABLED" : "ACTIVE");
       if (action === "toggleLead") {
         const next = leadCounterpart(a.role);
@@ -99,9 +107,12 @@ export default function Accounts({
         setActMsg({ text: "⚠ 처리에 실패했습니다 — 네트워크·권한(규칙 게시) 상태를 확인하고 다시 시도해 주세요.", ok: false });
       else if (action === "reassign" && reassignTo)
         setActMsg({
-          text: `'${a.name}' 계정을 ${ROLE_LABELS[reassignTo]}(으)로 옮겼습니다 — 해당 계정 관리 화면에서 승인해 주세요.`,
+          // ACTIVE 계정은 승인이 필요 없다 — 상태와 무관하게 "승인해 주세요"라고 하던 것 (점검 낮음)
+          text: `'${a.name}' 계정을 ${ROLE_LABELS[reassignTo]}(으)로 옮겼습니다${a.status === "PENDING" ? " — 해당 계정 관리 화면에서 승인해 주세요." : "."}`,
           ok: true,
         });
+      else if (action === "restore")
+        setActMsg({ text: `'${a.name}' 계정을 승인 대기로 복구했습니다 — 목록에서 승인해 주세요.`, ok: true });
       await refreshCloud();
     } else {
       if (action === "approve") setAccounts(approveAccount(a.id));
@@ -111,7 +122,7 @@ export default function Accounts({
       if (action === "reassign" && reassignTo) {
         setAccounts(setAccountRole(a.id, reassignTo));
         setActMsg({
-          text: `'${a.name}' 계정을 ${ROLE_LABELS[reassignTo]}(으)로 옮겼습니다 — 해당 계정 관리 화면에서 승인해 주세요.`,
+          text: `'${a.name}' 계정을 ${ROLE_LABELS[reassignTo]}(으)로 옮겼습니다${a.status === "PENDING" ? " — 해당 계정 관리 화면에서 승인해 주세요." : "."}`,
           ok: true,
         });
       }
@@ -160,10 +171,16 @@ export default function Accounts({
       {/* 직접 등록 — 신청·승인을 기다리지 않고 바로 쓸 수 있는 계정을 만든다 (2026-09-03) */}
       {canCreate && (
         <div className="card acct-new">
-          <button className="btn btn--ghost btn--sm" onClick={() => setOpenNew((v) => !v)}>
+          <button className="btn btn--ghost btn--sm" onClick={() => setOpenNew((v) => !v)} disabled={cloudFallback}>
             {openNew ? "− 직접 등록 닫기" : "＋ 계정 직접 등록"}
           </button>
-          {openNew && (
+          {cloudFallback && (
+            <span className="muted small">
+              {" "}공유 저장소에 연결된 뒤에만 등록할 수 있습니다 —{" "}
+              <button className="btn btn--ghost btn--sm" onClick={() => { setLoading(true); void refreshCloud(); }}>다시 연결</button>
+            </span>
+          )}
+          {openNew && !cloudFallback && (
             <form className="acct-new__form" onSubmit={submitNew}>
               <p className="muted small">
                 신청·승인 절차 없이 <strong>바로 사용 가능한 상태</strong>로 계정을 만듭니다.
@@ -178,7 +195,7 @@ export default function Accounts({
                     className="input"
                     type={cloudMode ? "email" : "text"}
                     placeholder={cloudMode ? "예: hong@mjc.ac.kr" : "예: hong123"}
-                    maxLength={100}
+                    maxLength={cloudMode ? 100 : 40} /* 로컬 아이디 정규식 상한 40자와 일치 (점검 낮음) */
                     value={newId}
                     onChange={(e) => setNewId(e.target.value)}
                   />
@@ -315,6 +332,46 @@ export default function Accounts({
           </tbody>
         </table>
       </div>
+
+      {/* 삭제된 계정 — tombstone 복구 경로 (점검 N16). 복구하면 승인 대기로 돌아가 다시 승인해야 한다 */}
+      {!loading && deleted.length > 0 && (
+        <div className="card acct-new">
+          <button className="btn btn--ghost btn--sm" onClick={() => setShowDeleted((v) => !v)}>
+            {showDeleted ? "− 삭제된 계정 닫기" : `삭제된 계정 ${deleted.length}건 보기`}
+          </button>
+          {showDeleted && (
+            <table className="admin-table" style={{ marginTop: 8 }}>
+              <thead>
+                <tr><th>아이디</th><th>이름</th><th>소속</th><th>구분</th><th>처리</th></tr>
+              </thead>
+              <tbody>
+                {deleted.map((a) => (
+                  <tr key={a.uid ?? a.id} className="row-off">
+                    <td className="code">{a.id}</td>
+                    <td>{a.name}</td>
+                    <td>{a.dept || "—"}</td>
+                    <td>{ROLE_LABELS[a.role]}</td>
+                    <td>
+                      {isSelf(a) || !cloudMode ? (
+                        <span className="muted small">—</span>
+                      ) : (
+                        <button
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => {
+                            if (window.confirm(`'${a.name}(${a.id})' 계정을 승인 대기로 복구할까요?`)) void act(a, "restore");
+                          }}
+                        >
+                          복구(승인 대기로)
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </>
   );
 }

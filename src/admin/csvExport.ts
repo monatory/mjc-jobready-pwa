@@ -1,7 +1,7 @@
 // Excel용 CSV 내보내기 — 컬럼 정의는 data/excel_columns.json에서 주입 (하드코딩 금지).
 // UTF-8 BOM으로 Excel 한글 호환. 시범: Sheet별 CSV 파일 / 본 구현: xlsx 다중 시트 1파일(제안 12건-⑥).
 import excelColumnsJson from "../../data/excel_columns.json";
-import { surveyItems, domainLabels, diagItems, diagnosticBank } from "../lib/dataLoader";
+import { surveyItems, domainLabels, diagItems, diagnosticBank, levelRules } from "../lib/dataLoader";
 // 파일명 날짜는 로컬(KST) 기준 — UTC slice는 새벽 다운로드가 전날 이름으로 저장됐다 (점검 A5, §7.2.1-5)
 import { localDateStr, todayStr } from "../lib/dates";
 import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
@@ -19,6 +19,9 @@ import { gradeLabel } from "../lib/sessionState";
 
 type ColumnDef = { key: string; label: string };
 const SHEETS = excelColumnsJson.sheets as Record<string, ColumnDef[]>;
+/** 실전 준비신호 기준점(level_rules.level4_signals.answer_at_least) — 04시트 문항별 gate/critical 판정에 사용 */
+const L4_ANSWER_AT_LEAST =
+  (levelRules as unknown as { level4_signals?: { answer_at_least?: number } }).level4_signals?.answer_at_least ?? 4;
 
 /** 자격증 분류 코드 → 라벨 (survey_items.certification_entry.category_values) */
 export const CERT_CATEGORIES = ((surveyItems as { certification_entry: { category_values?: Array<{ value: string; label: string }> } })
@@ -113,7 +116,8 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
           answer_label: v ? surveyAnswerLabel(itemKey, v) : "", // 결측은 빈칸으로 통일 (감사 P5-09)
           answered_at: s.completed_at,
           updated_at: s.completed_at,
-          survey_version: (surveyItems as { version: string }).version,
+          // 응시 시점 버전(응답 문서 저장값) — 현재 번들 버전을 찍으면 이력 추적이 안 된다 (점검 낮음)
+          survey_version: s.survey_version || (surveyItems as { version: string }).version,
         }));
       case "03_자격증현황":
         return s.certs.map((c) => ({
@@ -128,8 +132,15 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
       case "04_진단점수":
         return Object.entries(s.diag).map(([qid, v]) => {
           // 영역은 문항 정의(diagnostic_bank)의 실제 domain 코드로 — ID 앞 2글자 추정 금지 (감사 P5-07)
-          const domain = diagItems.find((it) => it.id === qid)?.domain ?? "";
+          const item = diagItems.find((it) => it.id === qid) as
+            | { domain?: string; gate?: string; critical?: boolean }
+            | undefined;
+          const domain = item?.domain ?? "";
           const avg = (s.result as { domainScores?: Record<string, number> }).domainScores?.[domain];
+          // 문항 단위 값 — 예전엔 학생 단위 상수(취업 Gate·필수 신호)를 27행에 반복해 문항별 분석이 왜곡됐다 (점검 N15).
+          // gate 문항: 그 문항이 실전 준비신호 기준(answer_at_least) 이상이면 Y / critical 문항: 기준 미달이면 Y.
+          // 해당 없는 문항은 빈칸.
+          const hit = typeof v === "number" && v >= L4_ANSWER_AT_LEAST;
           return {
             student_id: s.student_id,
             semester: s.semester,
@@ -137,9 +148,9 @@ function buildRows(sheetKey: string, students: StudentRecord[]): string[][] {
             domain,
             raw_score: v,
             domain_avg: avg != null ? Math.round(avg * 100) / 100 : "",
-            gate_passed: s.result.gates.employment && s.result.gates.timing ? "Y" : "N",
-            critical_unmet: s.result.gates.level4_signals.required_ok ? "N" : "Y",
-            diagnostic_version: (diagnosticBank as { version?: string }).version ?? "",
+            gate_passed: item?.gate ? (hit ? "Y" : "N") : "",
+            critical_unmet: item?.critical ? (hit ? "N" : "Y") : "",
+            diagnostic_version: s.diagnostic_version || ((diagnosticBank as { version?: string }).version ?? ""),
           };
         });
       case "05_추천활동":
@@ -282,7 +293,8 @@ function buildIntegratedRows(students: StudentRecord[]): { keys: string[]; rows:
       certJoin(s, "OWNED"),
       certJoin(s, "PREPARING"),
       certJoin(s, "TARGET"),
-      s.recs.map((a) => `${a.priority}. ${a.name}`).join(" / "),
+      // 종료·삭제된 활동은 표시해 준다 — 05시트는 OFF로 구분되는데 기본 다운로드인 통합 시트에는 없었다 (점검 N14)
+      s.recs.map((a) => `${a.priority}. ${a.name}${a.active ? "" : "(종료)"}`).join(" / "),
     ];
     return cells.map((v) => String(v ?? ""));
   });

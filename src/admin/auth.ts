@@ -200,7 +200,13 @@ export async function registerAccount(input: {
     } catch (e) {
       await fbSignOut(auth).catch(() => {});
       const code = (e as { code?: string })?.code ?? "";
-      if (code === "auth/email-already-in-use") return { ok: false, message: "이미 등록된 이메일입니다. 신청한 적이 있다면 로그인해 보세요 — 승인 대기 접수가 자동으로 복구됩니다." };
+      // 삭제(tombstone)된 계정은 로그인으로 복구되지 않는다 — 안내를 실제 동작에 맞춘다 (점검 N16)
+      if (code === "auth/email-already-in-use")
+        return {
+          ok: false,
+          message:
+            "이미 등록된 이메일입니다. 신청한 적이 있다면 로그인해 보세요(승인 대기면 그 상태가 유지됩니다). \"삭제된 계정\"이라고 나오면 마스터 관리자에게 복구를 요청해 주세요.",
+        };
       if (code === "auth/invalid-email") return { ok: false, message: "이메일 형식을 확인해 주세요." };
       // (2026-09-01 감사 P3-08) 네트워크 장애 시 로컬 폴백 금지 — 이 브라우저에만 존재하는 계정이
       // 만들어져 마스터가 승인할 수 없고, 클라우드 복구 후에는 로그인도 안 되는 데드엔드였다.
@@ -336,7 +342,7 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
   if (s.status === "DELETED") {
     // 삭제 tombstone — 고아 복구로 승인 대기가 재생성되지 않게 명시 차단 (감사 P3-12·C4-10)
     await fbSignOut(auth).catch(() => {});
-    return { ok: false, message: "삭제된 계정입니다. 다시 사용하려면 마스터 관리자에게 문의해 주세요." };
+    return { ok: false, message: "삭제된 계정입니다. 다시 사용하려면 마스터 관리자에게 복구를 요청해 주세요 (계정 관리 화면의 \"삭제된 계정\" 구역)." };
   }
   return { ok: true, message: "", session: storeSession(email, s.name, s.role) };
 }
@@ -351,12 +357,13 @@ export async function login(id: string, password: string): Promise<LoginResult> 
     return await localLogin(normalized, password);
   } catch (e) {
     // 예상 밖 예외를 화면까지 보내지 않는다 — 버튼이 "처리 중"에 고착되던 문제 (점검 A7)
+    // 어느 경로든 앱 세션 없이 Firebase만 로그인된 상태는 남기지 않는다 — 저장소 차단 분기만 빠져 있었다 (점검 M4)
+    if (CLOUD_ENABLED) fbSignOut(getAuthInst()).catch(() => {});
     if (e instanceof StorageBlockedError)
       return {
         ok: false,
         message: "브라우저 저장소가 차단되어 로그인 상태를 유지할 수 없습니다. 시크릿 모드·사이트 데이터 차단을 해제하고 다시 시도해 주세요.",
       };
-    if (CLOUD_ENABLED) fbSignOut(getAuthInst()).catch(() => {}); // 세션 없이 Firebase만 로그인된 상태 방지
     return { ok: false, message: "로그인 처리 중 오류가 났습니다. 잠시 후 다시 시도해 주세요." };
   }
 }
@@ -439,20 +446,25 @@ export async function loadStaffCloud(): Promise<AdminAccount[] | null> {
     await authReady(); // 로그인 복원 대기
     const snap = await getDocs(collection(getDb(), COL.staff));
     const list: AdminAccount[] = [];
+    const str = (v: unknown): string => (typeof v === "string" ? v : ""); // 타입이 깨진 필드는 빈 문자열 (점검 M5)
+    const ROLES: AdminRole[] = ["MASTER", "ADMIN_LEAD", "ADMIN", "COUNSELOR_LEAD", "COUNSELOR"];
+    const STATUSES: AccountStatus[] = ["ACTIVE", "PENDING", "DISABLED", "DELETED"];
     snap.forEach((d) => {
       const s = d.data() as StaffDoc;
-      if (s.status === "DELETED") return; // 삭제 tombstone은 목록 비노출
-      // 콘솔에서 수기로 만든 문서는 필드가 빠질 수 있다 — created_at 결측 1건이 정렬·렌더에서
-      // throw 하면 목록 전체가 로컬 폴백·백지가 됐다 (2026-09-02 점검 A8). 결측은 빈 값으로 보정.
+      // 콘솔에서 수기로 만든 문서는 필드가 빠지거나 타입이 다를 수 있다 — created_at 결측 1건이 정렬·렌더에서
+      // throw 하면 목록 전체가 로컬 폴백·백지가 됐다 (2026-09-02 점검 A8). name이 객체면 React 렌더가
+      // 깨졌다 (점검 M5). 역할·상태가 알 수 없는 값이면 건너뛴다.
+      if (!ROLES.includes(s.role) || !STATUSES.includes(s.status)) return;
+      // DELETED tombstone도 목록에 포함한다 — 화면이 "삭제됨" 구역으로 분리해 복구 버튼을 제공 (점검 N16)
       list.push({
-        id: s.email ?? "",
-        name: s.name ?? "",
-        dept: s.dept ?? "",
+        id: str(s.email),
+        name: str(s.name),
+        dept: str(s.dept),
         role: s.role,
         status: s.status,
         pw_hash: "",
-        created_at: s.created_at ?? "",
-        approved_at: s.approved_at,
+        created_at: str(s.created_at),
+        approved_at: typeof s.approved_at === "string" ? s.approved_at : undefined,
         uid: d.id,
       });
     });
@@ -491,7 +503,7 @@ export async function createStaffCloud(input: {
     await fbSignOut(signupAuth).catch(() => {});
     const code = (e as { code?: string })?.code ?? "";
     if (code === "auth/email-already-in-use")
-      return { ok: false, message: "이미 등록된 이메일입니다. 목록에 없다면 삭제(tombstone)된 계정일 수 있습니다 — 해당 사용자가 로그인하면 승인 대기로 다시 접수됩니다." };
+      return { ok: false, message: "이미 등록된 이메일입니다. 목록에 없다면 삭제된 계정일 수 있습니다 — 계정 목록 아래 \"삭제된 계정\" 구역에서 복구해 주세요." };
     if (code === "auth/invalid-email") return { ok: false, message: "이메일 형식을 확인해 주세요." };
     if (code === "auth/weak-password") return { ok: false, message: "비밀번호가 너무 단순합니다. 8자 이상으로 다시 입력해 주세요." };
     if (code === "auth/network-request-failed")
@@ -607,6 +619,18 @@ export async function setStaffLeadCloud(uid: string, role: AdminRole): Promise<b
 export async function removeStaffCloud(uid: string): Promise<boolean> {
   try {
     await updateDoc(doc(getDb(), COL.staff, uid), { status: "DELETED" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 삭제(tombstone) 계정 복구 — 승인 대기로 되돌린다. 예전엔 DELETED가 어느 목록에도 안 떠 마스터도 화면에서
+ *  되살릴 수 없었고, 같은 이메일 재가입은 "이미 등록된 이메일"로 막혀 데드엔드였다 (점검 N16).
+ *  규칙: 마스터 전체 / 관리자(LEAD)는 자기 역할군만 (update 규칙과 동일) */
+export async function restoreStaffCloud(uid: string): Promise<boolean> {
+  try {
+    await updateDoc(doc(getDb(), COL.staff, uid), { status: "PENDING" });
     return true;
   } catch {
     return false;

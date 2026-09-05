@@ -130,7 +130,7 @@ test("진로방향 미정 → Level 1 (진로탐색)", () => {
 });
 
 // ── 시나리오 7: 취업 방향이지만 JAS·자기이해 모두 낮음 → Level 1 ─
-test("취업 방향 + JAS 29 + 자기이해 낮음 → Level 1 (fallback)", () => {
+test("취업 방향은 JAS 최저 33 → level1_fallback(JAS<30) 미발동 = Level 2 (설계 문서화, §12-13)", () => {
   const s = {
     career_direction: "EMPLOYMENT", // 30... 조정: OTHER 시기 3 + 나머지 0 → 30+0+0+3+0+0=33. 29 만들기: school ALONE 0, timing OTHER 3 → 33 아님.
   };

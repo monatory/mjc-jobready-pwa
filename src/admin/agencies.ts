@@ -88,20 +88,33 @@ export async function updateAgency(
   return { list: save(current.map((a) => (a.id === id ? updated : a))), result };
 }
 
-/** 삭제 — 클라우드에는 tombstone 마킹으로 전파(감사 F14: 다른 상담사 캐시의 유령 기관 방지) */
-export async function removeAgency(id: string): Promise<{ list: Agency[]; result: AgencySaveResult }> {
-  const m = await import("./cloudStore");
-  const result = await m.deleteAgencyCloud(id);
-  return { list: save(loadAgencies().filter((a) => a.id !== id)), result };
-}
+const ARCHIVED_KEY = "mjc_ready_agencies_archived";
 
 /** 삭제된 기관 id→이름 (cloudStore.pullShared가 tombstone에서 채움) — 없으면 빈 객체 */
 function loadArchivedNames(): Record<string, string> {
   try {
-    return JSON.parse(localStorage.getItem("mjc_ready_agencies_archived") ?? "{}") as Record<string, string>;
+    return JSON.parse(localStorage.getItem(ARCHIVED_KEY) ?? "{}") as Record<string, string>;
   } catch {
     return {};
   }
+}
+
+/** 삭제 — 클라우드에는 tombstone 마킹으로 전파(감사 F14: 다른 상담사 캐시의 유령 기관 방지).
+ *  삭제한 세션에서도 과거 연계 기록에 이름이 남도록 로컬 archived 캐시에 즉시 기록한다 — 예전엔 다음
+ *  pullShared(재로그인) 전까지 "(삭제된 기관)"만 보였다 (점검 N11). 로컬 모드에서도 같은 캐시를 쓴다. */
+export async function removeAgency(id: string): Promise<{ list: Agency[]; result: AgencySaveResult }> {
+  const current = loadAgencies();
+  const target = current.find((a) => a.id === id);
+  if (target?.name) {
+    try {
+      localStorage.setItem(ARCHIVED_KEY, JSON.stringify({ ...loadArchivedNames(), [id]: target.name }));
+    } catch {
+      /* 캐시 기록 실패는 다음 pull에서 복구 */
+    }
+  }
+  const m = await import("./cloudStore");
+  const result = await m.deleteAgencyCloud(id);
+  return { list: save(current.filter((a) => a.id !== id)), result };
 }
 
 /** 기관명 표시 — 등록부에서 삭제된 기관을 참조하는 과거 연계 기록은 "(삭제된 기관) 이름"으로 표시.

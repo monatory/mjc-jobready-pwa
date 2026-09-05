@@ -28,7 +28,8 @@ const nameDeptKey = (s: StudentRecord): string => {
   return name && dept ? `${name}|${dept}` : "";
 };
 
-/** 학번 → 중복 의심 정보. 의심이 없는 학번은 키가 없다. */
+/** 학번 → 중복 의심 정보. 의심이 없는 학번은 키가 없다.
+ *  그룹 크기 m에 대해 선형 — 같은 값이 수백 명에 몰린 자료(임시 번호 오입력 등)에서 O(m³)로 멈추던 것 (점검 낮음) */
 export function findDuplicates(students: StudentRecord[]): Map<string, DupInfo> {
   const out = new Map<string, DupInfo>();
   const groupBy = (keyOf: (s: StudentRecord) => string, reason: DupInfo["reasons"][number]) => {
@@ -41,14 +42,21 @@ export function findDuplicates(students: StudentRecord[]): Map<string, DupInfo> 
       else groups.set(k, [s]);
     }
     for (const members of groups.values()) {
-      const ids = new Set(members.map((m) => m.student_id));
-      if (ids.size < 2) continue; // 같은 학번(다학기)만 있으면 정상
-      for (const s of members) {
-        const others = members.filter((m) => m.student_id !== s.student_id);
-        const info = out.get(s.student_id) ?? { reasons: [], others: [] };
+      // 학번별 대표 1건(첫 등장) — 다학기 같은 학번은 한 사람이므로 하나로 묶는다
+      const byId = new Map<string, StudentRecord>();
+      for (const m of members) if (!byId.has(m.student_id)) byId.set(m.student_id, m);
+      if (byId.size < 2) continue; // 같은 학번(다학기)만 있으면 정상
+      const reps = [...byId.values()];
+      for (const rep of reps) {
+        const info = out.get(rep.student_id) ?? { reasons: [], others: [] };
         if (!info.reasons.includes(reason)) info.reasons.push(reason);
-        for (const o of others) if (!info.others.some((x) => x.student_id === o.student_id)) info.others.push(o);
-        out.set(s.student_id, info);
+        const seen = new Set(info.others.map((o) => o.student_id));
+        for (const o of reps) {
+          if (o.student_id === rep.student_id || seen.has(o.student_id)) continue;
+          info.others.push(o);
+          seen.add(o.student_id);
+        }
+        out.set(rep.student_id, info);
       }
     }
   };

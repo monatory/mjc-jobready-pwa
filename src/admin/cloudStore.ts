@@ -28,19 +28,21 @@ export async function pullShared(): Promise<CloudState> {
     await authReady(); // 로그인 복원 대기
     const db = getDb();
     // 상담 기록 — 원격이 진실(저장이 트랜잭션 병합이므로 원격이 항상 최신 완전본).
-    // 원격에 없는 로컬 항목(과거 push 실패분)만 남겨 두어 다음 저장 때 병합되게 한다.
-    const localOutreach = JSON.parse(localStorage.getItem(OUTREACH_KEY) ?? "{}") as Record<string, OutreachEntry>;
+    // (2026-09-05 점검 N2) 예전엔 "원격에 없는 로컬 항목(push 실패분)"을 남겨 두었는데, 실패분은 다음
+    // 저장에서 어차피 재병합되지 않고(저장 base는 항상 원격) 삭제된 학생의 기록만 다른 브라우저에 영구히
+    // 남아 되살아나는 경로가 됐다. 로컬 캐시를 원격 스냅샷으로 통째 교체한다.
+    const remoteOutreach: Record<string, OutreachEntry> = {};
     const outreachSnap = await getDocs(collection(db, COL.outreach));
     let broken = 0;
     outreachSnap.forEach((d) => {
       // 원격 문서 형태 검사 (§7.2.1-11, 점검 C5) — 콘솔 수기 편집 등으로 깨진 문서 1건이 명단·카드
       // 렌더에서 throw 해 화면이 백지가 되던 경로 차단. 깨진 문서는 건너뛰고 건수를 콘솔에 남긴다.
-      const data = d.data();
-      if (isValidOutreach(data)) localOutreach[d.id] = data;
+      const clean = sanitizeOutreach(d.data());
+      if (clean) remoteOutreach[d.id] = clean;
       else broken += 1;
     });
     if (broken > 0) console.warn(`[MJC-READY] 형식이 깨진 상담 기록 ${broken}건을 건너뛰었습니다 (ready_outreach)`);
-    localStorage.setItem(OUTREACH_KEY, JSON.stringify(localOutreach));
+    localStorage.setItem(OUTREACH_KEY, JSON.stringify(remoteOutreach));
     notifyOutreachChanged(); // 열려 있는 명단·카운트가 리마운트 없이 최신 기록을 읽게 통지
 
     // 등록부 — id 기준 병합(클라우드 우선) + tombstone(deleted) 전파:
@@ -71,16 +73,31 @@ export async function pullShared(): Promise<CloudState> {
 }
 
 const OUTREACH_STATUSES = ["NONE", "CONTACTED", "RESERVED", "DONE", "NO_RESPONSE"];
-/** 상담 기록 문서의 최소 형태 — 화면이 그대로 소비하는 필드의 타입만 확인 */
-function isValidOutreach(v: unknown): v is OutreachEntry {
-  if (!v || typeof v !== "object") return false;
+/** 저장 base가 없을 때(신규 학생·삭제 직후) 쓰는 빈 기록 — 로컬 캐시(옛 데이터)로 부활시키지 않는다 (점검 N2) */
+const EMPTY_ENTRY: OutreachEntry = { status: "NONE", memo: "", updated_at: "", by: "" };
+
+/** 상담 기록 문서의 형태 검사 + 정리 — 화면이 그대로 소비하는 필드의 타입을 확인하고, 회차 배열의 깨진
+ *  원소(seq가 숫자가 아니거나 내용이 문자열이 아닌 것)는 걸러낸다. 예전엔 배열 여부만 봐서 seq 결측 1건이
+ *  이후 모든 회차 번호를 NaN으로 만들었다 (점검 N12). 문서 자체가 아니면 null. */
+function sanitizeOutreach(v: unknown): OutreachEntry | null {
+  if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
-  if (typeof o.status !== "string" || !OUTREACH_STATUSES.includes(o.status)) return false;
-  if (o.memo !== undefined && typeof o.memo !== "string") return false;
-  if (o.sessions !== undefined && !Array.isArray(o.sessions)) return false;
-  if (o.referral !== undefined && (typeof o.referral !== "object" || o.referral === null)) return false;
-  if (o.employment !== undefined && (typeof o.employment !== "object" || o.employment === null)) return false;
-  return true;
+  if (typeof o.status !== "string" || !OUTREACH_STATUSES.includes(o.status)) return null;
+  if (o.memo !== undefined && typeof o.memo !== "string") return null;
+  if (o.sessions !== undefined && !Array.isArray(o.sessions)) return null;
+  if (o.referral !== undefined && (typeof o.referral !== "object" || o.referral === null)) return null;
+  if (o.employment !== undefined && (typeof o.employment !== "object" || o.employment === null)) return null;
+  const entry = { ...(o as unknown as OutreachEntry), memo: typeof o.memo === "string" ? o.memo : "" };
+  if (Array.isArray(o.sessions)) {
+    const ok = (o.sessions as unknown[]).filter(
+      (s): s is CounselSession =>
+        !!s && typeof s === "object" && Number.isFinite((s as CounselSession).seq) && typeof (s as CounselSession).content === "string"
+    );
+    if (ok.length !== o.sessions.length)
+      console.warn(`[MJC-READY] 형식이 깨진 상담 회차 ${o.sessions.length - ok.length}건을 건너뛰었습니다`);
+    entry.sessions = ok;
+  }
+  return entry;
 }
 
 /** 상담 기록 회차 연산 — 배열 교체 대신 원격 최신 배열에 적용 (동시 편집 시 회차 소실 방지) */
@@ -104,7 +121,8 @@ export async function pushOutreachMerged(
     const next: OutreachEntry = { ...base, ...patch };
     if (ops?.add) {
       const sessions = [...(base.sessions ?? [])];
-      const seq = sessions.reduce((m, s) => Math.max(m, s.seq), 0) + 1;
+      // seq가 숫자가 아닌 원소가 섞여 있어도 NaN이 전파되지 않게 유한한 값만 본다 (점검 N12)
+      const seq = sessions.reduce((m, s) => (Number.isFinite(s.seq) ? Math.max(m, s.seq) : m), 0) + 1;
       sessions.push({ ...ops.add, seq });
       next.sessions = sessions;
     }
@@ -121,7 +139,9 @@ export async function pushOutreachMerged(
     const ref = doc(db, COL.outreach, studentId);
     const merged = await runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
-      const base = snap.exists() ? (snap.data() as OutreachEntry) : fallbackBase;
+      // 원격 문서가 없으면(첫 기록 또는 마스터가 삭제한 직후) 빈 기록에서 시작한다. 로컬 캐시(fallbackBase)를
+      // 쓰면 삭제된 학생의 옛 기록이 그대로 부활했다 (점검 N2). 원격 문서는 형태를 정리해 쓴다 (점검 N12).
+      const base = snap.exists() ? sanitizeOutreach(snap.data()) ?? EMPTY_ENTRY : EMPTY_ENTRY;
       const next = applyTo(base);
       tx.set(ref, next);
       return next;

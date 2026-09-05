@@ -456,6 +456,8 @@ body {
 }
 .cert-row__del {
   padding: 8px 12px;
+  min-height: 44px; /* 손가락 터치 목표 — 칩·척도와 같은 기준 (점검 낮음) */
+  min-width: 44px;
 }
 
 /* ── 문항 부가 안내 (제도 설명 펼치기 + 컨설턴트 연계 고지) ── */
@@ -641,7 +643,7 @@ body {
 .level-card__subtitle {
   font-size: 0.9rem;
   font-weight: 700;
-  color: var(--orange-deep);
+  color: var(--orange-text); /* 14px 굵은 글자는 큰 제목 기준(--orange-deep, 대비 3.9)이 아니라 본문 기준(5.0) (점검 M3) */
   margin: -2px 0 8px;
 }
 .cta-card__hint {
@@ -1042,7 +1044,9 @@ body {
   .app-header,
   .actions,
   .submit-fail,
-  .cta-card .btn {
+  .cta-card .btn,
+  .cta-card__hint {
+    /* 버튼을 숨기면 "이 버튼을 누르면…" 힌트도 함께 숨긴다 (점검 낮음) */
     display: none !important;
   }
   .print-head {
@@ -1086,6 +1090,10 @@ body {
     font-size: 0.66rem;
     line-height: 1.2;
     word-break: keep-all;
+    /* "보통이다"처럼 공백 없는 낱말은 keep-all로는 줄바꿈이 안 돼 320px·글꼴 확대에서 칸 밖으로 넘쳤다 —
+       마지막 수단으로 글자 사이 분절 허용 (점검 N9) */
+    overflow-wrap: anywhere;
+    max-width: 100%;
   }
   .stat-row {
     flex-wrap: wrap;

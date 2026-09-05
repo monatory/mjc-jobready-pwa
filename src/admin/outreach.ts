@@ -126,6 +126,24 @@ export function moveOutreachLocal(oldId: string, newId: string): void {
   const all = loadOutreach();
   if (!all[oldId]) return;
   if (!all[newId]) all[newId] = all[oldId];
+  else {
+    // 새 학번에 기록이 이미 있으면 서버(responsesSource)와 같은 규칙으로 병합 — 예전엔 옛 기록을 버려
+    // 교정한 화면에서 회차가 누락됐다 (점검 M12). 회차는 합쳐 날짜순 재번호, 나머지는 새 학번 값 우선.
+    const src = all[oldId];
+    const dst = all[newId];
+    const sessions = [...(src.sessions ?? []), ...(dst.sessions ?? [])]
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+      .map((s, i) => ({ ...s, seq: i + 1 }));
+    all[newId] = {
+      ...src,
+      ...dst,
+      sessions,
+      memo: dst.memo || src.memo,
+      final_summary: dst.final_summary || src.final_summary,
+      referral: dst.referral ?? src.referral,
+      employment: dst.employment ?? src.employment,
+    };
+  }
   delete all[oldId];
   try {
     localStorage.setItem(KEY, JSON.stringify(all));

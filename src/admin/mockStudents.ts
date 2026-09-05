@@ -15,6 +15,8 @@ import {
 } from "../lib/dataLoader";
 
 export interface StudentRecord {
+  /** Firestore 실제 문서키("{학기}_{학번}") — 삭제·수정의 기준. mock은 같은 형식으로 생성 (점검 N6) */
+  doc_id: string;
   student_id: string;
   name: string;
   dept: string;
@@ -32,6 +34,10 @@ export interface StudentRecord {
   consent_at?: string; // 개인정보 동의 시각 (2026-09-03 이후 응답만 — 구버전·mock은 없음)
   /** 결과지 "잡카페 상담 신청하기" 클릭 시각 — 설문 상담희망과 별개의 이중장치 (2026-09-05) */
   counsel_requested_at?: string;
+  /** 응시 시점의 문항·진단·규칙 버전 (응답 문서에 저장된 값, 구버전·mock은 빈 문자열) */
+  survey_version?: string;
+  diagnostic_version?: string;
+  rules_version?: string;
 }
 
 /** 상담 희망 판정 — 설문 응답(counsel_wish=YES) **또는** 결과지 상담 신청 버튼 클릭. 명단·큐·KPI·CSV가
@@ -165,8 +171,12 @@ function makeStudent(i: number): StudentRecord {
   });
 
   const day = 1 + Math.floor(rng() * 14);
+  const studentId = String(20260000 + 100 * (i % 10) + i + 1);
   return {
-    student_id: String(20260000 + 100 * (i % 10) + i + 1),
+    doc_id: `2026-2_${studentId}`,
+    student_id: studentId,
+    // 미리보기에서도 "결과지 상담 신청" 경로를 볼 수 있게 일부 학생에 신청 기록 부여 (점검 낮음)
+    counsel_requested_at: survey.counsel_wish === "NO" && i % 5 === 0 ? `2026-08-${String(15 + (i % 10)).padStart(2, "0")}T14:${String(10 + i).padStart(2, "0")}:00.000Z` : undefined,
     name: NAMES[i % NAMES.length],
     dept: DEPTS[i % DEPTS.length],
     grade: pick(["1", "2", "3"]),
