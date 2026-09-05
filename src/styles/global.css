@@ -637,6 +637,50 @@ body {
   font-size: 0.84rem;
   color: var(--muted);
 }
+/* 진학·창업 Route 부제 — Level 제목 아래 Route 이름 (2026-09-05) */
+.level-card__subtitle {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--orange-deep);
+  margin: -2px 0 8px;
+}
+.cta-card__hint {
+  margin-top: 8px;
+}
+
+/* 중복 의심 표시 — 같은 휴대전화(또는 성명+학과)로 서로 다른 학번의 응답이 있을 때 (2026-09-05) */
+.dup-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fff1d6;
+  color: #8a4b00;
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.dup-note {
+  background: #fff8ea;
+  border: 1px solid #f3d9a4;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  font-size: 0.84rem;
+}
+.dup-note ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.danger-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0 10px;
+  font-size: 0.82rem;
+}
 .gauge {
   width: 200px;
   display: block;
@@ -1031,15 +1075,17 @@ body {
   }
 }
 @media (max-width: 380px) {
-  /* 좁은 화면에서도 척도 "방향"은 보여야 한다 — 라벨 전체를 숨기면 1점·5점의 의미 안내가
-     화면에 전무해 응답이 왜곡될 수 있다(감사 S2-06). 양끝 라벨만 유지, 가운데만 숨김. */
-  .scale span {
-    display: none;
+  /* 좁은 화면(갤럭시 S23 등 360px)에서도 5개 라벨을 전부 보여 준다. 예전엔 가운데 3개("그렇지 않다·보통이다·
+     그렇다")를 숨겼는데, 학생에게는 "글씨가 안 나오는 오류"로 보였다 (2026-09-05 사용자 보고).
+     칸 폭 약 60px에 맞춰 글자만 조금 줄이고 2줄 줄바꿈을 허용한다. */
+  .scale {
+    padding: 8px 2px;
+    min-height: 72px;
   }
-  .scale:first-child span,
-  .scale:last-child span {
-    display: block;
-    font-size: 0.6rem;
+  .scale span {
+    font-size: 0.66rem;
+    line-height: 1.2;
+    word-break: keep-all;
   }
   .stat-row {
     flex-wrap: wrap;

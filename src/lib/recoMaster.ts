@@ -115,8 +115,10 @@ function isValidActivity(o: unknown): o is RecoActivity {
 
 /** 마지막 병합에서 형태 불량으로 제외된 문서 코드 — 관리자 화면이 경고로 표시 */
 let droppedCodes: string[] = [];
+/** 문서키 ≠ recommendation_code 로 무시한 문서 id (콘솔 수기 생성분, 점검 RECO-04) */
+let mismatchedIds: string[] = [];
 export function getDroppedCodes(): string[] {
-  return [...droppedCodes];
+  return [...droppedCodes, ...mismatchedIds.map((id) => `${id}(문서키≠코드)`)];
 }
 
 /** 시드 + 오버라이드 병합 목록 (동기) — 시드 순서 유지, 신규 활동은 코드순으로 뒤에.
@@ -154,9 +156,20 @@ export function listForAdmin(): RecoActivity[] {
 
 function applyDocs(snap: { forEach(cb: (d: { id: string; data(): unknown }) => void): void }): void {
   const next: Record<string, RecoOverride> = {};
+  const mismatched: string[] = [];
   snap.forEach((d) => {
-    next[d.id] = d.data() as RecoOverride;
+    const data = d.data() as RecoOverride;
+    // 문서키와 recommendation_code가 다르면 어느 쪽이 키인지 알 수 없다 — 규칙(validReco)이 막지만
+    // 규칙 게시 전·콘솔 수기 문서는 통과했을 수 있다. 무시하고 관리자 화면에 알린다 (점검 RECO-04)
+    if (data && typeof data === "object" && "recommendation_code" in data && data.recommendation_code !== d.id) {
+      mismatched.push(d.id);
+      return;
+    }
+    next[d.id] = data;
   });
+  if (mismatched.length > 0)
+    console.warn(`[MJC-READY] 문서키와 코드가 다른 추천활동 ${mismatched.length}건 무시: ${mismatched.join(", ")}`);
+  mismatchedIds = mismatched;
   overrides = next; // 원격이 진실 — 로컬에만 남은 항목은 폐기 (§7.2.1-1 pull 원칙)
   saveCache();
   notifyChanged();

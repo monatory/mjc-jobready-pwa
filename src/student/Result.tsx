@@ -17,13 +17,17 @@ import {
   diagItems,
 } from "../lib/dataLoader";
 import { getMasterSync, pullRecoMasterForStudent, type RecoActivity } from "../lib/recoMaster";
-import { getProfile, getSurvey, getDiag, clearAll } from "../lib/sessionState";
+import { getProfile, getSurvey, getDiag, clearAll, getCounselRequest, setCounselRequest } from "../lib/sessionState";
 import { todayStr } from "../lib/dates";
 
 const rules = levelRules as unknown as {
   jas_cutoff_level3: number;
   weak_area: { threshold: number; max_count: number };
 };
+/** 앱 내장(인앱) 브라우저 판별 — 카카오톡·네이버·인스타그램·페이스북·라인. 인쇄 안내 문구 표시용 */
+const IN_APP_BROWSER =
+  typeof navigator !== "undefined" && /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
+
 const templates = resultTemplates as unknown as {
   legal_footer: string;
   levels: Record<string, { title: string; headline: string; body: string; consultant: string }>;
@@ -131,6 +135,19 @@ export default function Result() {
   );
   const analysisReady = analysis !== null;
 
+  // "잡카페 상담 신청하기" 클릭 기록 — 설문에서 상담 미희망이었어도 여기서 누르면 상담 희망으로 집계되는
+  // 이중장치 (2026-09-05 사용자 요구). 배점 항목인 survey.counsel_wish는 바꾸지 않고 별도 필드로 저장 →
+  // payload가 바뀌므로 아래 제출 effect가 자동으로 재제출한다.
+  const [counselReq, setCounselReq] = useState(() => getCounselRequest());
+  const requestCounsel = () => {
+    if (!counselReq) setCounselReq(setCounselRequest());
+    window.alert(
+      counselReq
+        ? "이미 상담을 신청하셨어요. 잡카페 컨설턴트가 입력하신 연락처로 연락드립니다. 바로 방문(본관 1층)하셔도 됩니다."
+        : "상담 신청이 기록되었습니다. 잡카페 컨설턴트가 입력하신 연락처로 먼저 연락드립니다. 바로 방문(본관 1층)하셔도 됩니다."
+    );
+  };
+
   const payload = useMemo<ResponsePayload | null>(() => {
     if (!hasData || !evalResult || !analysis || !profile || !profileOk) return null;
     return {
@@ -148,9 +165,10 @@ export default function Result() {
       },
       // 결과 시점 추천 스냅샷 — 활성기간이 지나도 관리자 화면·CSV에서 유지 (감사 P3-11)
       recommendations: analysis.recs.map((a) => a.recommendation_code),
+      ...(counselReq ? { counsel_request: counselReq } : {}),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasData, evalResult, analysis, profileOk]);
+  }, [hasData, evalResult, analysis, profileOk, counselReq]);
   const serialized = useMemo(() => (payload ? JSON.stringify(payload) : ""), [payload]);
   const [submitState, setSubmitState] = useState<"OFF" | "SAVING" | "DONE" | "FAIL" | "DENIED" | "NO_PROFILE">(
     CLOUD_ENABLED ? "SAVING" : "OFF"
@@ -241,7 +259,10 @@ export default function Result() {
         </p>
         <section className={`card level-card level-card--l${r.level}`}>
           <p className="level-card__route">{isNonEmployment ? "진학·창업 Route" : "취업준비 Route"}</p>
-          <h1 className="level-card__title">{tpl.title}</h1>
+          {/* Level은 Route와 무관하게 항상 표기한다 — 진학·창업 Route는 Route 제목만 보여 "레벨이 안 나온다"고
+              보였다 (2026-09-05 사용자 보고). Route 제목은 부제로 내려 함께 보여 준다. */}
+          <h1 className="level-card__title">{templates.levels[String(r.level)].title}</h1>
+          {isNonEmployment && <p className="level-card__subtitle">{tpl.title}</p>}
           <p className="level-card__headline">{tpl.headline}</p>
           <p className="level-card__body">{tpl.body}</p>
           {profile && (
@@ -322,22 +343,22 @@ export default function Result() {
                 ? "취업 의지가 확인된 학생에게는 취업컨설턴트가 우선 연결됩니다."
                 : "진로 방향 정리는 진로컨설턴트와의 상담이 가장 빠릅니다."}
           </p>
-          {survey.counsel_wish === "YES" && (
+          {(survey.counsel_wish === "YES" || counselReq) && (
             <p className="cta-card__note">
-              상담을 희망하셨어요 — 잡카페 {tpl.consultant.replace("잡카페 ", "")}가 입력하신 연락처로
+              {counselReq && survey.counsel_wish !== "YES" ? "상담을 신청하셨어요" : "상담을 희망하셨어요"} — 잡카페{" "}
+              {tpl.consultant.replace("잡카페 ", "")}가 입력하신 연락처로
               <strong> 먼저 연락드립니다.</strong> 따로 신청하지 않아도 괜찮아요.
             </p>
           )}
-          <button
-            className="btn btn--primary btn--block"
-            onClick={() =>
-              window.alert(
-                "시범운영: 잡카페(본관 1층)에 바로 방문하셔도 되고, 상담 희망으로 응답하신 경우 컨설턴트가 먼저 연락드립니다."
-              )
-            }
-          >
-            잡카페 상담 신청하기
+          {/* 설문에서 "지금은 괜찮다"고 했어도 이 버튼을 누르면 상담 희망으로 기록·제출된다 (이중장치, 2026-09-05) */}
+          <button className="btn btn--primary btn--block" onClick={requestCounsel}>
+            {counselReq ? "✓ 상담 신청됨 — 컨설턴트가 연락드려요" : "잡카페 상담 신청하기"}
           </button>
+          {!counselReq && survey.counsel_wish !== "YES" && (
+            <p className="muted small cta-card__hint">
+              설문에서 상담이 급하지 않다고 답했더라도, 이 버튼을 누르면 상담 희망으로 기록되어 컨설턴트가 연락드립니다.
+            </p>
+          )}
         </section>
 
         {submitState === "FAIL" && (
@@ -399,6 +420,13 @@ export default function Result() {
             결과지 인쇄·PDF 저장
           </button>
         </div>
+        {/* 카카오톡·인스타그램 등 앱 내장 브라우저는 window.print()가 동작하지 않는 경우가 많다 (점검 S11) */}
+        {IN_APP_BROWSER && (
+          <p className="muted small cta-card__hint">
+            ※ 카카오톡 등 앱 안에서 열었다면 인쇄·PDF 저장이 되지 않을 수 있어요. 화면 오른쪽 위 메뉴에서
+            "다른 브라우저로 열기"를 눌러 크롬·사파리에서 저장해 주세요.
+          </p>
+        )}
 
         <footer className="legal">
           {submitState === "DONE" && <>응답이 안전하게 제출되었습니다. </>}

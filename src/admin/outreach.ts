@@ -135,6 +135,26 @@ export function moveOutreachLocal(oldId: string, newId: string): void {
   notifyOutreachChanged();
 }
 
+/** 응답 삭제 시 로컬 캐시의 상담 기록도 제거 (클라우드 삭제는 responsesSource.deleteStudentResponses) */
+export function removeOutreachLocal(studentIds: string[]): void {
+  if (studentIds.length === 0) return;
+  const all = loadOutreach();
+  let changed = false;
+  for (const id of studentIds) {
+    if (all[id]) {
+      delete all[id];
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all));
+  } catch {
+    /* 캐시 정리 실패는 다음 pull에서 복구 */
+  }
+  notifyOutreachChanged();
+}
+
 export function statusOf(all: Record<string, OutreachEntry>, studentId: string): OutreachStatus {
   return all[studentId]?.status ?? "NONE";
 }

@@ -7,7 +7,7 @@ import { signInAnonymously } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { CLOUD_ENABLED, COL, SEMESTER, getStudentAuth, getStudentDb, authReadyFor } from "./firebase";
 import { surveyItems, diagnosticBank, levelRules } from "./dataLoader";
-import { getConsentInfo, type StudentProfile, type CertEntry, type ConsentInfo } from "./sessionState";
+import { getConsentInfo, type StudentProfile, type CertEntry, type ConsentInfo, type CounselRequest } from "./sessionState";
 
 export interface ResponsePayload {
   profile: StudentProfile;
@@ -21,6 +21,9 @@ export interface ResponsePayload {
   recommendations?: string[];
   /** 개인정보 동의 시각·고지문 버전 — 명세 §7.2 "별도 Consent 값". 2026-09-03 이후 응답만 (점검 S2) */
   consent?: ConsentInfo;
+  /** 결과지 "잡카페 상담 신청하기" 클릭 기록 — 설문 상담희망(배점 항목)과 별개의 이중장치.
+   *  관리자·상담사 화면은 survey.counsel_wish==="YES" 또는 이 필드가 있으면 상담 희망으로 본다 (2026-09-05) */
+  counsel_request?: CounselRequest;
 }
 
 /** DENIED = 서버 규칙 거부(permission-denied) — 재시도해도 같은 결과라 네트워크 안내와 구분한다 (점검 S3) */

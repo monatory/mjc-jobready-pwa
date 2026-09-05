@@ -30,7 +30,14 @@ export interface StudentRecord {
   recs: RecommendationActivity[];
   completed_at: string;
   consent_at?: string; // 개인정보 동의 시각 (2026-09-03 이후 응답만 — 구버전·mock은 없음)
+  /** 결과지 "잡카페 상담 신청하기" 클릭 시각 — 설문 상담희망과 별개의 이중장치 (2026-09-05) */
+  counsel_requested_at?: string;
 }
+
+/** 상담 희망 판정 — 설문 응답(counsel_wish=YES) **또는** 결과지 상담 신청 버튼 클릭. 명단·큐·KPI·CSV가
+ *  전부 이 함수를 써야 "설문에선 미희망이었지만 결과지에서 신청한 학생"이 빠지지 않는다 (2026-09-05). */
+export const wantsCounsel = (s: StudentRecord): boolean =>
+  s.survey.counsel_wish === "YES" || Boolean(s.counsel_requested_at);
 
 // 시드 고정 의사난수
 function makeRng(seed: number) {

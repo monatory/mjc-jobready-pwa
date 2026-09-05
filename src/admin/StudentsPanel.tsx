@@ -2,11 +2,12 @@
 // showOutreach=true(상담사 전용)일 때만 연락 우선 큐·연락상태·상담 메모가 나타난다.
 // 담당자(행정)에게는 연락 기록이 화면·CSV 어디에도 노출되지 않는다 (2026-08-30 사용자 확정).
 import { useEffect, useMemo, useState } from "react";
-import { surveyAnswerLabel, type StudentRecord } from "./mockStudents";
-import { useStudents, inPeriod, updateStudentProfile } from "./responsesSource";
+import { surveyAnswerLabel, wantsCounsel, type StudentRecord } from "./mockStudents";
+import { useStudents, inPeriod, updateStudentProfile, deleteStudentResponses } from "./responsesSource";
 import { exportSheet, exportSheetForResearch, CERT_CATEGORIES, certCategoryLabel } from "./csvExport";
 import { domainLabels, levelRules, surveyItems } from "../lib/dataLoader";
-import { localDateStr } from "../lib/dates";
+import { localDateStr, localDateTimeStr } from "../lib/dates";
+import { findDuplicates, DUP_REASON_LABELS } from "./duplicates";
 import type { AdminSession } from "./auth";
 import {
   loadOutreach,
@@ -82,20 +83,38 @@ interface AdvFilter {
   gov: string;         // 정부지원 연계의향
   dateFrom: string;    // 검사 실시일 기간 시작 (YYYY-MM-DD) — 기간별 취합 (2026-08-31)
   dateTo: string;      // 검사 실시일 기간 끝
+  grade: string;       // 학년 (본과1~3·심화1~2·졸업) — 점검 ADM-04 (2026-09-05)
+  jasMin: string;      // JAS 범위 — 컷오프 주변(예: 60~69) 대상 추출용
+  jasMax: string;
 }
 const EMPTY_ADV: AdvFilter = {
   contact: "", referral: "", employment: "", direction: "", counsel: "", majorLink: "",
   homeRegion: "", region: "", jobGroup: "", cert: "", certCat: "", timing: "", gov: "",
-  dateFrom: "", dateTo: "",
+  dateFrom: "", dateTo: "", grade: "", jasMin: "", jasMax: "",
+};
+// 학년 필터 선택지 — 졸업은 연도와 무관하게 접두 일치, 구버전 "1"~"3"은 본과 N학년으로 간주
+const GRADE_FILTER: Opt[] = [
+  { value: "본과1", label: "본과정 1학년" }, { value: "본과2", label: "본과정 2학년" }, { value: "본과3", label: "본과정 3학년" },
+  { value: "심화1", label: "전공심화 1학년" }, { value: "심화2", label: "전공심화 2학년" }, { value: "졸업", label: "졸업생" },
+];
+const gradeMatches = (grade: string, want: string): boolean => {
+  if (want === "졸업") return grade.startsWith("졸업");
+  if (grade === want) return true;
+  return /^[1-3]$/.test(grade) && want === `본과${grade}`;
 };
 
 const matchesAdv = (s: StudentRecord, f: AdvFilter, outreach: Record<string, OutreachEntry>): boolean => {
   if ((f.dateFrom || f.dateTo) && !inPeriod(s, f.dateFrom, f.dateTo)) return false;
+  if (f.grade && !gradeMatches(s.grade, f.grade)) return false;
+  if (f.jasMin !== "" && s.result.jas < Number(f.jasMin)) return false;
+  if (f.jasMax !== "" && s.result.jas > Number(f.jasMax)) return false;
   if (f.contact && statusOf(outreach, s.student_id) !== f.contact) return false;
   if (f.referral && referralStageOf(outreach, s.student_id) !== f.referral) return false;
   if (f.employment && employmentStatusOf(outreach, s.student_id) !== f.employment) return false;
   if (f.direction && s.survey.career_direction !== f.direction) return false;
-  if (f.counsel && s.survey.counsel_wish !== f.counsel) return false;
+  // 상담 희망 = 설문 희망 또는 결과지 상담 신청 (2026-09-05 이중장치)
+  if (f.counsel === "YES" && !wantsCounsel(s)) return false;
+  if (f.counsel === "NO" && wantsCounsel(s)) return false;
   if (f.majorLink && s.unscored.major_link !== f.majorLink) return false;
   if (f.homeRegion && s.unscored.home_region !== f.homeRegion) return false;
   if (f.region && !(s.unscored.region ?? "").split(",").includes(f.region)) return false;
@@ -120,7 +139,7 @@ const PRESETS: Array<{ key: string; label: string; fn: (s: StudentRecord) => boo
       rules.gates.timing_gate.values.includes(s.survey.employment_timing), // level_rules 주입 (§4)
   },
   { key: "employment", label: "취업희망", fn: (s) => s.survey.career_direction === "EMPLOYMENT" },
-  { key: "counsel", label: "상담희망", fn: (s) => s.survey.counsel_wish === "YES" },
+  { key: "counsel", label: "상담희망", fn: wantsCounsel }, // 설문 희망 + 결과지 상담 신청 (2026-09-05)
   { key: "gov", label: "정부지원 연계희망", fn: (s) => s.survey.gov_link === "USE" },
   { key: "l3", label: "Level 3", fn: (s) => s.result.level === 3 },
   { key: "l4", label: "Level 4", fn: (s) => s.result.level === 4 },
@@ -131,7 +150,7 @@ const PRESETS: Array<{ key: string; label: string; fn: (s: StudentRecord) => boo
 export const needsOutreachWith =
   (outreach: Record<string, OutreachEntry>) =>
   (s: StudentRecord): boolean =>
-    (s.survey.counsel_wish === "YES" || s.result.level >= 3) &&
+    (wantsCounsel(s) || s.result.level >= 3) &&
     s.result.routeTag !== "FURTHER_STUDY_STARTUP" &&
     ["NONE", "NO_RESPONSE"].includes(statusOf(outreach, s.student_id));
 
@@ -186,18 +205,60 @@ export default function StudentsPanel({
   }, [detail, editing, counselDirty]);
 
   const openEdit = (s: StudentRecord) => {
-    const isGrad = s.grade.startsWith("졸업");
+    const grade = s.grade ?? ""; // 결측 방어 (점검 A15)
+    const isGrad = grade.startsWith("졸업");
     setEditForm({
       student_id: s.student_id,
       name: s.name,
-      dept: s.dept,
-      gradeSel: isGrad ? "졸업" : s.grade,
-      gradeYear: isGrad ? s.grade.slice(2) : "",
+      dept: s.dept ?? "",
+      gradeSel: isGrad ? "졸업" : grade,
+      gradeYear: isGrad ? grade.slice(2) : "",
       phone: s.phone,
     });
     setEditMsg(null);
     setEditing(true);
   };
+
+  // ── 응답 삭제 — 마스터 전용 (2026-09-05 사용자 요구: 시범 운영(9/7) 전 테스트 응답 정리) ──
+  const isMaster = session.role === "MASTER";
+  const [delBusy, setDelBusy] = useState(false);
+  const [delMsg, setDelMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  /** 삭제 대상 응답들과 함께 지울 상담 기록 학번 — 그 학번의 응답이 **전부** 삭제 대상일 때만 (다학기 보호) */
+  const outreachIdsFor = (targets: StudentRecord[]): string[] => {
+    const targetKeys = new Set(targets.map((t) => `${t.semester}_${t.student_id}`));
+    const ids = new Set(targets.map((t) => t.student_id));
+    return [...ids].filter((id) =>
+      students.filter((s) => s.student_id === id).every((s) => targetKeys.has(`${s.semester}_${s.student_id}`))
+    );
+  };
+  const runDelete = async (targets: StudentRecord[]) => {
+    setDelBusy(true);
+    setDelMsg(null);
+    const r = await deleteStudentResponses(targets, outreachIdsFor(targets));
+    setDelBusy(false);
+    setDelMsg({ text: r.message, ok: r.ok });
+    return r.ok;
+  };
+  const deleteOne = async (s: StudentRecord) => {
+    if (!window.confirm(`'${s.name}(${s.student_id})' 학생의 ${s.semester || "이번 학기"} 응답을 삭제할까요?\n상담 기록도 함께 삭제되며(다른 학기 응답이 없을 때) 되돌릴 수 없습니다.`)) return;
+    if (await runDelete([s])) {
+      setDetail(null);
+      setEditing(false);
+      setCounselDirty(false);
+    }
+  };
+  const deleteFiltered = async (targets: StudentRecord[]) => {
+    if (targets.length === 0) return;
+    const typed = window.prompt(
+      `현재 필터 결과 ${targets.length}건의 응답을 모두 삭제합니다 (상담 기록 포함, 복구 불가).\n계속하려면 "삭제"라고 입력하세요.`
+    );
+    if (typed !== "삭제") return;
+    await runDelete(targets);
+  };
+
+  // ── 중복 의심 — 같은 휴대전화(또는 성명+학과)로 서로 다른 학번의 응답 (2026-09-05) ──
+  const duplicates = useMemo(() => findDuplicates(students), [students]);
+  const [dupOnly, setDupOnly] = useState(false);
 
   const saveEdit = async (s: StudentRecord) => {
     const grade = editForm.gradeSel === "졸업" ? `졸업${editForm.gradeYear.trim()}` : editForm.gradeSel;
@@ -257,6 +318,7 @@ export default function StudentsPanel({
     let list = students;
     if (showOutreach && queueOnly) list = list.filter(needsOutreach);
     if (showOutreach && followupOnly) list = list.filter(inFollowup);
+    if (dupOnly) list = list.filter((s) => duplicates.has(s.student_id));
     for (const p of PRESETS) if (presets.has(p.key)) list = list.filter(p.fn);
     if (levelFilter) list = list.filter((s) => s.result.level === levelFilter);
     if (deptFilter) list = list.filter((s) => s.dept === deptFilter);
@@ -265,7 +327,7 @@ export default function StudentsPanel({
       list = list.filter((s) => s.name.includes(search.trim()) || s.student_id.includes(search.trim()));
     return [...list].sort(compareBy[sortKey]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [students, presets, queueOnly, followupOnly, levelFilter, deptFilter, adv, search, outreach, showOutreach, sortKey]);
+  }, [students, presets, queueOnly, followupOnly, dupOnly, duplicates, levelFilter, deptFilter, adv, search, outreach, showOutreach, sortKey]);
 
   // 정렬 선택지 — 연락상태·외부연계 기준은 상담사 워크스페이스에서만
   const sortOptions: Array<[SortKey, string]> = [
@@ -290,6 +352,7 @@ export default function StudentsPanel({
             ["employment", "취업상태", EMPLOYMENT_ORDER.map((st) => ({ value: st, label: EMPLOYMENT_LABELS[st] }))],
           ] as Array<[keyof AdvFilter, string, Opt[]]>)
         : []),
+      ["grade", "학년", GRADE_FILTER], // 점검 ADM-04 (2026-09-05)
       ["direction", "진로방향", optionsOf("career_direction")],
       ["counsel", "상담 희망", optionsOf("counsel_wish")],
       ["majorLink", "전공연계", optionsOf("major_link")],
@@ -348,6 +411,15 @@ export default function StudentsPanel({
             {p.label}
           </button>
         ))}
+        {/* 중복 의심 — 같은 휴대전화(또는 성명+학과)로 학번이 다른 응답. 표시만 하고 정리는 사람이 (2026-09-05) */}
+        <button
+          className={`chip ${dupOnly ? "chip--on" : ""}`}
+          disabled={duplicates.size === 0}
+          onClick={() => setDupOnly((v) => !v)}
+          title="같은 휴대전화 또는 같은 성명·학과로 서로 다른 학번의 응답이 있는 학생 — 학번 오기입 재응시 의심"
+        >
+          ⚠ 중복 의심 ({duplicates.size})
+        </button>
         {presets.size > 1 && <span className="muted small filter-bar__hint">선택한 조건 모두 충족(AND)</span>}
       </div>
       <div className="filter-bar">
@@ -396,6 +468,31 @@ export default function StudentsPanel({
                 value={adv.dateTo}
                 min={adv.dateFrom || undefined}
                 onChange={(e) => setAdv((prev) => ({ ...prev, dateTo: e.target.value }))}
+              />
+            </div>
+          </label>
+          {/* JAS 범위 — 컷오프 직전(예: 60~69) 학생을 따로 모아 연락하는 용도 (점검 ADM-04, 2026-09-05) */}
+          <label className="adv-filter__field adv-filter__field--range">
+            <span>JAS 범위 (0~100)</span>
+            <div className="adv-filter__range">
+              <input
+                type="number"
+                className="input"
+                min={0}
+                max={100}
+                placeholder="최소"
+                value={adv.jasMin}
+                onChange={(e) => setAdv((prev) => ({ ...prev, jasMin: e.target.value }))}
+              />
+              <span className="muted">~</span>
+              <input
+                type="number"
+                className="input"
+                min={0}
+                max={100}
+                placeholder="최대"
+                value={adv.jasMax}
+                onChange={(e) => setAdv((prev) => ({ ...prev, jasMax: e.target.value }))}
               />
             </div>
           </label>
@@ -449,6 +546,21 @@ export default function StudentsPanel({
           </button>
         </div>
       </div>
+      {/* 마스터 전용 — 필터 결과 일괄 삭제 (테스트 응답 정리). 실시일 기간 필터로 범위를 좁힌 뒤 사용 (2026-09-05) */}
+      {isMaster && source === "CLOUD" && (
+        <div className="danger-bar">
+          <button
+            className="btn btn--danger btn--sm"
+            disabled={delBusy || filtered.length === 0}
+            title="현재 필터에 보이는 응답을 모두 삭제합니다 — 실시일 기간 필터로 범위를 먼저 좁히세요"
+            onClick={() => void deleteFiltered(filtered)}
+          >
+            {delBusy ? "삭제 중…" : `🗑 필터 결과 ${filtered.length}건 삭제 (마스터)`}
+          </button>
+          <span className="muted">예: 시범 운영 시작일 전 테스트 응답 → 위 "실시일 기간"을 그날 전까지로 두고 삭제</span>
+        </div>
+      )}
+      {delMsg && <p className={`profile-edit__msg ${delMsg.ok ? "profile-edit__msg--ok" : "profile-edit__msg--err"}`}>{delMsg.text}</p>}
       <div className="table-wrap table-wrap--list card">
         {/* --list: 15열 명단이 가로 스크롤 없이 한 화면에 들어가는 밀도 (글자 축약 없음, 2026-09-02) */}
         <table className="admin-table admin-table--hover admin-table--list">
@@ -481,7 +593,14 @@ export default function StudentsPanel({
                 >
                   <td className="small" title={s.completed_at}>{localDateStr(s.completed_at) || "—"}</td>
                   <td>{s.student_id}</td>
-                  <td><strong>{s.name}</strong></td>
+                  <td>
+                    <strong>{s.name}</strong>
+                    {duplicates.has(s.student_id) && (
+                      <span className="dup-badge" title={duplicates.get(s.student_id)!.reasons.map((r) => DUP_REASON_LABELS[r]).join(" · ")}>
+                        중복?
+                      </span>
+                    )}
+                  </td>
                   <td className="num">
                     {/* 행 클릭(모달)과 분리 — 전화 걸기/복사용. 구버전 무연락처 응답은 "—" */}
                     {s.phone ? (
@@ -499,7 +618,10 @@ export default function StudentsPanel({
                   <td className="num">{s.result.jas}</td>
                   <td><span className={`lv-badge lv-badge--l${s.result.level}`}>L{s.result.level} {LEVEL_NAMES[s.result.level]}</span></td>
                   <td>{surveyAnswerLabel("employment_timing", s.survey.employment_timing)}</td>
-                  <td>{s.survey.counsel_wish === "YES" ? "희망" : "—"}</td>
+                  {/* 설문 희망 / 결과지에서 상담 신청 버튼(이중장치) / 없음 (2026-09-05) */}
+                  <td title={s.counsel_requested_at ? `결과지 상담 신청 ${localDateTimeStr(s.counsel_requested_at)}` : undefined}>
+                    {s.survey.counsel_wish === "YES" ? "희망" : s.counsel_requested_at ? "신청" : "—"}
+                  </td>
                   {showOutreach && (
                     <>
                       <td><span className={`outreach-badge outreach-badge--${st.toLowerCase()}`}>{OUTREACH_LABELS[st]}</span></td>
@@ -554,6 +676,17 @@ export default function StudentsPanel({
                       onClick={() => openEdit(detail)}
                     >
                       ✏ 정보 수정
+                    </button>
+                  )}
+                  {/* 응답 삭제 — 마스터만, 실측 모드만 (2026-09-05) */}
+                  {isMaster && !editing && (
+                    <button
+                      className="btn btn--danger btn--sm profile-edit__open"
+                      disabled={source !== "CLOUD" || delBusy}
+                      title="이 학생의 이번 학기 응답과 상담 기록을 삭제합니다 (복구 불가)"
+                      onClick={() => void deleteOne(detail)}
+                    >
+                      {delBusy ? "삭제 중…" : "🗑 응답 삭제"}
                     </button>
                   )}
                 </p>
@@ -628,6 +761,23 @@ export default function StudentsPanel({
             )}
             {editMsg && <p className={`profile-edit__msg ${editMsg.ok ? "profile-edit__msg--ok" : "profile-edit__msg--err"}`}>{editMsg.text}</p>}
 
+            {/* 중복 의심 안내 — 같은 사람으로 보이는 다른 학번의 응답 목록 (2026-09-05) */}
+            {duplicates.has(detail.student_id) && (
+              <div className="dup-note">
+                ⚠ <strong>중복 등록 의심</strong> ({duplicates.get(detail.student_id)!.reasons.map((r) => DUP_REASON_LABELS[r]).join(" · ")}) —
+                같은 학생이 학번을 다르게 입력해 두 번 응시했을 수 있습니다. 확인 후 잘못된 쪽을
+                {canMoveId ? " \"정보 수정\"으로 학번을 바로잡거나" : ""} {isMaster ? "\"응답 삭제\"로 정리해 주세요." : "마스터에게 삭제를 요청해 주세요."}
+                <ul>
+                  {duplicates.get(detail.student_id)!.others.map((o) => (
+                    <li key={`${o.semester}_${o.student_id}`}>
+                      학번 <strong>{o.student_id}</strong> · {o.name} · {o.dept} {gradeLabel(o.grade)} · {o.phone || "연락처 없음"} ·
+                      실시일 {localDateStr(o.completed_at) || "—"} · JAS {o.result.jas} · L{o.result.level}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* 통합 상담 카드 — 상담사 워크스페이스에서만 노출·수정 (담당자 화면에는 없음) */}
             {showOutreach && (
               <CounselRecord
@@ -667,6 +817,12 @@ export default function StudentsPanel({
                   {Object.entries(detail.survey).map(([k, v]) => (
                     <li key={k}>{labelOf(k)}: {surveyAnswerLabel(k, v)}</li>
                   ))}
+                  {detail.counsel_requested_at && (
+                    <li>
+                      <strong>결과지에서 상담 신청</strong>: {localDateTimeStr(detail.counsel_requested_at)}
+                      {detail.survey.counsel_wish !== "YES" && <span className="muted"> (설문에서는 미희망 — 버튼으로 신청)</span>}
+                    </li>
+                  )}
                   <li>전공연계: {surveyAnswerLabel("major_link", detail.unscored.major_link)}</li>
                   <li>
                     본가 {surveyAnswerLabel("home_region", detail.unscored.home_region)} → 희망{" "}

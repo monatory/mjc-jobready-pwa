@@ -18,6 +18,8 @@ export type PushResult = "OK" | "FAIL" | "LOCAL";
 
 const OUTREACH_KEY = "mjc_ready_outreach";
 const AGENCY_KEY = "mjc_ready_agencies";
+/** 삭제(tombstone)된 기관의 id→이름 — agencies.agencyName의 폴백 (점검 CON-09). 로그아웃 시 함께 제거 */
+export const AGENCY_ARCHIVED_KEY = "mjc_ready_agencies_archived";
 
 /** 클라우드에서 공유 데이터를 당겨와 로컬 캐시를 갱신. 성공 시 "CLOUD" */
 export async function pullShared(): Promise<CloudState> {
@@ -47,13 +49,18 @@ export async function pullShared(): Promise<CloudState> {
     try {
       const localAgencies = JSON.parse(localStorage.getItem(AGENCY_KEY) ?? "[]") as Agency[];
       const byId = new Map(localAgencies.map((a) => [a.id, a]));
+      // 삭제된 기관의 이름은 따로 보관 — 과거 연계 기록이 "(삭제된 기관)"만 남고 이름을 잃던 문제 (점검 CON-09)
+      const archived: Record<string, string> = {};
       const agencySnap = await getDocs(collection(db, COL.agencies));
       agencySnap.forEach((d) => {
         const remote = d.data() as Agency & { deleted?: boolean };
-        if (remote.deleted) byId.delete(d.id);
-        else if (typeof remote.name === "string" && (remote.type === "AGENCY" || remote.type === "EMPLOYER")) byId.set(d.id, remote);
+        if (remote.deleted) {
+          byId.delete(d.id);
+          if (typeof remote.name === "string" && remote.name) archived[d.id] = remote.name;
+        } else if (typeof remote.name === "string" && (remote.type === "AGENCY" || remote.type === "EMPLOYER")) byId.set(d.id, remote);
       });
       localStorage.setItem(AGENCY_KEY, JSON.stringify([...byId.values()]));
+      localStorage.setItem(AGENCY_ARCHIVED_KEY, JSON.stringify(archived));
     } catch {
       console.warn("[MJC-READY] 연계기관 등록부 조회 실패 — 로컬 캐시 유지");
     }
@@ -129,7 +136,7 @@ export async function pushOutreachMerged(
 /** 등록부 1건 클라우드 반영 — 결과 반환 (감사 C4-12: 실패 무통보 금지).
  *  baseUpdatedAt(편집 시작 시점의 원격 갱신 시각)이 오면 원격과 비교해 다를 때 CONFLICT — 남의 수정을
  *  지우지 않는다 (§7.2.1-12, 점검 C4). 원격에 updated_at이 없는 구버전 문서는 비교 없이 쓴다. */
-export async function pushAgency(agency: Agency, baseUpdatedAt?: string): Promise<PushResult | "CONFLICT"> {
+export async function pushAgency(agency: Agency, baseUpdatedAt?: string): Promise<PushResult | "CONFLICT" | "DELETED"> {
   if (!CLOUD_ENABLED) return "LOCAL";
   try {
     await authReady();
@@ -138,8 +145,9 @@ export async function pushAgency(agency: Agency, baseUpdatedAt?: string): Promis
       const ref = doc(db, COL.agencies, agency.id);
       const snap = await tx.get(ref);
       const remote = snap.exists() ? (snap.data() as Agency & { deleted?: boolean }) : null;
-      // tombstone된 기관 id의 재사용 방지 — 삭제 마킹이 남아 있으면 되살리지 않는다
-      if (remote?.deleted) return "OK" as const;
+      // tombstone된 기관 id의 재사용 방지 — 삭제 마킹이 남아 있으면 되살리지 않는다.
+      // 예전엔 "OK"를 돌려줘 화면이 "수정됨 ✓"을 띄웠다 — 호출부가 삭제 사실을 알리게 DELETED 반환 (점검 CNS-04)
+      if (remote?.deleted) return "DELETED" as const;
       if (baseUpdatedAt !== undefined && remote?.updated_at && remote.updated_at !== baseUpdatedAt) return "CONFLICT" as const;
       tx.set(ref, agency);
       return "OK" as const;
@@ -158,7 +166,18 @@ export async function deleteAgencyCloud(id: string): Promise<PushResult> {
     const db = getDb();
     await runTransaction(db, async (tx) => {
       const ref = doc(db, COL.agencies, id);
-      tx.set(ref, { id, deleted: true, updated_at: new Date().toISOString() });
+      // 기관명·구분은 tombstone에 남긴다 — 과거 연계 기록에서 "(삭제된 기관) 서대문고용센터"처럼
+      // 이름을 복원하기 위해 (점검 CON-09). 예전엔 id·deleted만 남겨 이름이 영영 사라졌다
+      const snap = await tx.get(ref);
+      const prev = snap.exists() ? (snap.data() as Partial<Agency>) : {};
+      tx.set(ref, {
+        id,
+        deleted: true,
+        updated_at: new Date().toISOString(),
+        ...(prev.name ? { name: prev.name } : {}),
+        ...(prev.type ? { type: prev.type } : {}),
+        ...(prev.program ? { program: prev.program } : {}),
+      });
     });
     return "OK";
   } catch {

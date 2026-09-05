@@ -43,6 +43,9 @@ export default function Accounts({
 }) {
   const [accounts, setAccounts] = useState<AdminAccount[]>(loadAccounts);
   const [cloudMode, setCloudMode] = useState(false);
+  // 첫 클라우드 조회가 끝날 때까지 "불러오는 중" — 조회 전에 빈 로컬 목록과 "연결하지 못해" 문구가
+  // 먼저 떠서 계정이 없는 것처럼 보이던 문제 (점검 ADM-03)
+  const [loading, setLoading] = useState(CLOUD_ENABLED);
   const [actMsg, setActMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   // 직접 등록 폼 (2026-09-03) — 신청이 오지 않을 때의 우회 경로이자 상시 등록 수단
@@ -61,6 +64,7 @@ export default function Accounts({
       setAccounts(cloud);
       setCloudMode(true);
     }
+    setLoading(false);
   };
   useEffect(() => {
     void refreshCloud();
@@ -139,13 +143,15 @@ export default function Accounts({
     <>
       <h1 className="admin__title">{title}</h1>
       <p className="muted">
-        {description} 승인 대기 <strong>{pending}건</strong>.
+        {description} {!loading && <>승인 대기 <strong>{pending}건</strong>.</>}
         {" "}
-        {cloudMode
-          ? "☁ 공유 저장소(Firebase) 연결됨 — 승인·변경이 모든 기기에 반영됩니다."
-          : CLOUD_ENABLED
-            ? "공유 저장소에 연결하지 못해 이 브라우저의 로컬 계정을 표시 중입니다."
-            : "시범: 이 브라우저에만 저장되는 로컬 계정 — Firebase 설정(docs/FIREBASE_SETUP.md) 후 공유로 전환됩니다."}
+        {loading
+          ? "공유 저장소에서 계정 목록을 불러오는 중…"
+          : cloudMode
+            ? "☁ 공유 저장소(Firebase) 연결됨 — 승인·변경이 모든 기기에 반영됩니다."
+            : CLOUD_ENABLED
+              ? "⚠ 공유 저장소에 연결하지 못해 이 브라우저의 로컬 계정을 표시 중입니다 — 네트워크·로그인 상태를 확인하고 새로고침해 주세요."
+              : "시범: 이 브라우저에만 저장되는 로컬 계정 — Firebase 설정(docs/FIREBASE_SETUP.md) 후 공유로 전환됩니다."}
       </p>
       {actMsg && (
         <p className={`profile-edit__msg ${actMsg.ok ? "" : "profile-edit__msg--err"}`}>{actMsg.text}</p>
@@ -172,19 +178,22 @@ export default function Accounts({
                     className="input"
                     type={cloudMode ? "email" : "text"}
                     placeholder={cloudMode ? "예: hong@mjc.ac.kr" : "예: hong123"}
+                    maxLength={100}
                     value={newId}
                     onChange={(e) => setNewId(e.target.value)}
                   />
                 </label>
                 <label className="adv-filter__field">
                   <span>이름</span>
-                  <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                  {/* 길이 상한 (점검 ADM-05) */}
+                  <input className="input" maxLength={30} value={newName} onChange={(e) => setNewName(e.target.value)} />
                 </label>
                 <label className="adv-filter__field">
                   <span>소속 (선택)</span>
                   <input
                     className="input"
                     placeholder="예: 잡카페"
+                    maxLength={50}
                     value={newDept}
                     onChange={(e) => setNewDept(e.target.value)}
                   />
@@ -235,10 +244,13 @@ export default function Accounts({
             </tr>
           </thead>
           <tbody>
-            {visible.length === 0 && (
+            {loading && (
+              <tr><td colSpan={7} className="muted">계정 목록을 불러오는 중…</td></tr>
+            )}
+            {!loading && visible.length === 0 && (
               <tr><td colSpan={7} className="muted">해당하는 계정이 아직 없습니다.</td></tr>
             )}
-            {visible.map((a) => (
+            {!loading && visible.map((a) => (
               <tr key={a.uid ?? a.id} className={a.status === "DISABLED" ? "row-off" : ""}>
                 <td className="code">{a.id}</td>
                 <td><strong>{a.name}</strong></td>

@@ -40,8 +40,9 @@ function save(list: Agency[]): Agency[] {
   return list;
 }
 
-/** CONFLICT: 내가 편집을 시작한 뒤 다른 상담사가 같은 기관을 수정함 — 덮어쓰지 않았으니 최신본을 다시 봐야 한다 */
-export type AgencySaveResult = "OK" | "FAIL" | "LOCAL" | "CONFLICT";
+/** CONFLICT: 내가 편집을 시작한 뒤 다른 상담사가 같은 기관을 수정함 — 덮어쓰지 않았으니 최신본을 다시 봐야 한다
+ *  DELETED: 수정하려는 기관을 다른 상담사가 이미 삭제함 — 저장하지 않았고 로컬 목록에서도 제거 (점검 CNS-04) */
+export type AgencySaveResult = "OK" | "FAIL" | "LOCAL" | "CONFLICT" | "DELETED";
 
 // 클라우드 반영 헬퍼 (설정 전에는 LOCAL) — 실패를 호출부에 반환 (감사 C4-12: 무통보 금지)
 async function pushCloud(a: Agency, baseUpdatedAt?: string): Promise<AgencySaveResult> {
@@ -82,6 +83,8 @@ export async function updateAgency(
   const updated: Agency = { ...target, ...patch, updated_at: new Date().toISOString() };
   const result = await pushCloud(updated, baseUpdatedAt);
   if (result === "CONFLICT") return { list: current, result };
+  // 다른 상담사가 이미 삭제한 기관 — 되살리지 않고 내 로컬 목록에서도 지운다 (점검 CNS-04)
+  if (result === "DELETED") return { list: save(current.filter((a) => a.id !== id)), result };
   return { list: save(current.map((a) => (a.id === id ? updated : a))), result };
 }
 
@@ -92,8 +95,21 @@ export async function removeAgency(id: string): Promise<{ list: Agency[]; result
   return { list: save(loadAgencies().filter((a) => a.id !== id)), result };
 }
 
-/** 기관명 표시 — 등록부에서 삭제된 기관을 참조하는 과거 연계 기록은 "(삭제된 기관)"으로 표시 (감사 C4-08) */
+/** 삭제된 기관 id→이름 (cloudStore.pullShared가 tombstone에서 채움) — 없으면 빈 객체 */
+function loadArchivedNames(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem("mjc_ready_agencies_archived") ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+/** 기관명 표시 — 등록부에서 삭제된 기관을 참조하는 과거 연계 기록은 "(삭제된 기관) 이름"으로 표시.
+ *  tombstone이 이름을 보존하므로(점검 CON-09) 이름까지 잃지 않는다. 구버전 tombstone은 이름 없이 표시 (감사 C4-08) */
 export function agencyName(list: Agency[], id: string | undefined): string {
   if (!id) return "";
-  return list.find((a) => a.id === id)?.name ?? "(삭제된 기관)";
+  const live = list.find((a) => a.id === id)?.name;
+  if (live) return live;
+  const archived = loadArchivedNames()[id];
+  return archived ? `(삭제된 기관) ${archived}` : "(삭제된 기관)";
 }

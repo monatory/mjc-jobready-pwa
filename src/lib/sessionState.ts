@@ -50,6 +50,7 @@ const KEYS = {
   certs: "mjc_ready_certs",
   diag: "mjc_ready_diag",
   uploaded: "mjc_ready_uploaded", // 클라우드 제출 완료 표시 — 다시 진단 시 함께 초기화
+  counselRequest: "mjc_ready_counsel_request", // 결과지 "상담 신청" 버튼 기록 (2026-09-05 이중장치)
 } as const;
 
 function read<T>(key: string): T | null {
@@ -99,6 +100,22 @@ export const getCerts = () => read<CertEntry[]>(KEYS.certs) ?? [];
 
 export const setDiag = (r: Record<string, number>) => write(KEYS.diag, r);
 export const getDiag = () => read<Record<string, number>>(KEYS.diag) ?? {};
+
+/** 결과지 "잡카페 상담 신청하기" 버튼 기록 — 설문에서 "지금은 괜찮다"고 답했더라도 버튼을 누르면
+ *  상담 희망으로 집계되게 하는 이중장치 (2026-09-05 사용자 요구). 설문 응답(counsel_wish)은 배점
+ *  항목(§2 Read-Only)이라 건드리지 않고 **별도 필드**로 저장한다 — 응답값을 바꾸면 JAS·Level이
+ *  결과지를 본 뒤에 달라지는 문제가 생긴다. 관리자·상담사 화면은 둘 중 하나면 "상담 희망"으로 본다. */
+export interface CounselRequest {
+  at: string; // ISO 일시 — 최초 클릭 시각 (다시 눌러도 유지)
+}
+export const setCounselRequest = (): CounselRequest => {
+  const prev = read<CounselRequest>(KEYS.counselRequest);
+  if (prev) return prev;
+  const next = { at: new Date().toISOString() };
+  write(KEYS.counselRequest, next);
+  return next;
+};
+export const getCounselRequest = () => read<CounselRequest>(KEYS.counselRequest);
 
 export function clearAll(): void {
   for (const key of Object.values(KEYS)) sessionStorage.removeItem(key);

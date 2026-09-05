@@ -3,7 +3,7 @@
 // (2026-09-01 감사 수정) 클라우드 모드에서 mock 폴백 금지 — 빈 DB는 "0건", 조회 실패는 "ERROR"로
 // 구분 표시한다. 가짜 학생 40명이 실측처럼 떠서 실제 아웃리치 기록이 오염되던 경로(F07) 차단.
 import { useEffect, useState } from "react";
-import { collection, getDocs, doc, runTransaction } from "firebase/firestore";
+import { collection, getDocs, doc, runTransaction, writeBatch } from "firebase/firestore";
 import { CLOUD_ENABLED, COL, SEMESTER, getDb, getAuthInst, authReady } from "../lib/firebase";
 import { evaluate, type EvaluationResult } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
@@ -13,7 +13,7 @@ import { surveyItems, diagnosticBank, levelRules } from "../lib/dataLoader";
 import { getMasterSync, pullRecoMaster, findArchivedActivity } from "../lib/recoMaster";
 import { localDateStr, todayStr } from "../lib/dates";
 import { getMockStudents, type StudentRecord } from "./mockStudents";
-import { moveOutreachLocal, type OutreachEntry } from "./outreach";
+import { moveOutreachLocal, removeOutreachLocal, type OutreachEntry } from "./outreach";
 import type { ResponsePayload } from "../lib/saveResponse";
 
 export type StudentsSource = "CLOUD" | "MOCK" | "LOADING" | "ERROR";
@@ -51,11 +51,14 @@ function restoreRecs(raw: ResponsePayload, level: number, weak: ReturnType<typeo
     // 현행 목록에 없으면 tombstone에 보존된 삭제 시점 정의(archived)로 되살린다
     // (부분 복원 시 관리자·CSV가 학생이 본 것보다 적게 보이던 문제 — 2026-09-02 점검 [중간-1])
     const found = codes
-      .map(
-        (c) =>
-          master.activities.find((a) => a.recommendation_code === c) ??
-          (findArchivedActivity(c) as unknown as RecommendationActivity | undefined)
-      )
+      .map((c) => {
+        const current = master.activities.find((a) => a.recommendation_code === c);
+        if (current) return current;
+        // 현행 목록에 없는 활동(삭제·tombstone)은 이력 복원용 — 활성여부는 OFF로 표시한다.
+        // archived 정의가 active:true를 품고 있어 05_추천활동 시트에 "ON"으로 나가던 문제 (점검 STU-08)
+        const archived = findArchivedActivity(c) as unknown as RecommendationActivity | undefined;
+        return archived ? { ...archived, active: false } : undefined;
+      })
       .filter((a): a is RecommendationActivity => Boolean(a));
     if (found.length > 0) return found;
   }
@@ -73,8 +76,9 @@ function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentR
   return {
     student_id: raw.profile.student_id,
     name: raw.profile.name,
-    dept: raw.profile.dept,
-    grade: raw.profile.grade,
+    // 콘솔 수기 문서의 학과·학년 결측은 빈 문자열로 — "정보 수정" 버튼이 startsWith에서 throw 하던 것 (점검 A15)
+    dept: raw.profile.dept ?? "",
+    grade: raw.profile.grade ?? "",
     phone: raw.profile.phone ?? "",
     semester: (raw as { semester?: string }).semester ?? "",
     survey: raw.survey,
@@ -86,7 +90,56 @@ function toStudentRecord(raw: ResponsePayload & { saved_at?: string }): StudentR
     recs,
     completed_at: raw.saved_at ?? "",
     consent_at: raw.consent?.at ?? "", // 동의 시각 — 구버전(2026-09-03 이전) 응답은 없음
+    counsel_requested_at: raw.counsel_request?.at ?? "", // 결과지 상담 신청 버튼 (2026-09-05)
   };
+}
+
+/**
+ * 학생 응답 삭제 — 마스터 전용 (2026-09-05 사용자 요구: 시범 운영 시작 전 테스트 응답 정리).
+ * 응답 문서("{학기}_{학번}")와, 호출부가 지정한 상담 기록 문서(학번 키)를 배치로 지운다.
+ * 상담 기록은 학번 단일 키라 다른 학기 응답이 남아 있으면 지우면 안 된다 — 어느 기록을 지울지는
+ * 호출부(StudentsPanel)가 "그 학번의 응답이 전부 삭제 대상일 때"만 넘긴다.
+ * 규칙: ready_responses delete = 승인 교직원, ready_outreach write = 상담사 계열(마스터 포함).
+ * 화면은 마스터에게만 버튼을 보여 준다. 되돌릴 수 없으므로 호출부가 2중 확인을 받는다.
+ */
+export async function deleteStudentResponses(
+  recs: StudentRecord[],
+  outreachIds: string[]
+): Promise<{ ok: boolean; deleted: number; message: string }> {
+  if (!CLOUD_ENABLED) return { ok: false, deleted: 0, message: "미리보기 모드에서는 삭제되지 않습니다." };
+  if (recs.length === 0) return { ok: false, deleted: 0, message: "삭제할 응답이 없습니다." };
+  try {
+    await authReady();
+    const db = getDb();
+    const targets = [
+      ...recs.map((r) => doc(db, COL.responses, `${r.semester || SEMESTER}_${r.student_id}`)),
+      ...outreachIds.map((id) => doc(db, COL.outreach, id)),
+    ];
+    // Firestore 배치 상한(500) 아래로 나눠 커밋 — 한 묶음이 실패하면 그 묶음은 통째로 남는다(원자성)
+    const CHUNK = 200;
+    let done = 0;
+    for (let i = 0; i < targets.length; i += CHUNK) {
+      const batch = writeBatch(db);
+      targets.slice(i, i + CHUNK).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+      done += Math.min(CHUNK, targets.length - i);
+    }
+    removeOutreachLocal(outreachIds);
+    invalidateStudentsCache();
+    void done;
+    return { ok: true, deleted: recs.length, message: `응답 ${recs.length}건을 삭제했습니다.` };
+  } catch (e) {
+    const code = (e as { code?: string })?.code ?? "";
+    invalidateStudentsCache(); // 일부 묶음만 지워졌을 수 있으므로 목록을 다시 받는다
+    return {
+      ok: false,
+      deleted: 0,
+      message:
+        code === "permission-denied"
+          ? "삭제 권한이 없습니다 — 마스터 계정으로 로그인했는지, 규칙이 게시됐는지 확인해 주세요."
+          : "삭제 중 오류가 났습니다. 네트워크 상태를 확인하고 목록을 새로고침한 뒤 다시 시도해 주세요.",
+    };
+  }
 }
 
 let cache: Promise<StudentsData> | null = null;

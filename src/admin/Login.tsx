@@ -31,10 +31,15 @@ export default function AdminLogin({ onLogin }: { onLogin: (session: AdminSessio
   const submitLogin = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    const r = await login(loginId, loginPw);
-    setBusy(false);
-    if (r.ok && r.session) onLogin(r.session);
-    else setMessage({ text: r.message, ok: false });
+    try {
+      const r = await login(loginId, loginPw);
+      if (r.ok && r.session) onLogin(r.session);
+      else setMessage({ text: r.message, ok: false });
+    } catch {
+      setMessage({ text: "로그인 처리 중 오류가 났습니다. 잠시 후 다시 시도해 주세요.", ok: false });
+    } finally {
+      setBusy(false); // 예외가 나도 버튼이 "처리 중"에 고착되지 않게 (점검 A7)
+    }
   };
 
   const submitRegister = async (e: FormEvent) => {
@@ -44,8 +49,14 @@ export default function AdminLogin({ onLogin }: { onLogin: (session: AdminSessio
       return;
     }
     setBusy(true);
-    const r = await registerAccount({ id: regId, name: regName, dept: regDept, role: regRole, password: regPw });
-    setBusy(false);
+    let r: { ok: boolean; message: string };
+    try {
+      r = await registerAccount({ id: regId, name: regName, dept: regDept, role: regRole, password: regPw });
+    } catch {
+      r = { ok: false, message: "신청 처리 중 오류가 났습니다. 잠시 후 다시 시도해 주세요." };
+    } finally {
+      setBusy(false);
+    }
     setMessage({ text: r.message, ok: r.ok });
     if (r.ok) {
       setTab("login");

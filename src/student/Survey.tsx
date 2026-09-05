@@ -181,6 +181,8 @@ export default function Survey() {
                 placeholder="예: 20261234"
                 onChange={(e) => setProfileState({ ...profile, student_id: e.target.value })}
               />
+              {/* 중복 등록 예방 안내 — 같은 학번 재응시는 최신 응답으로 갱신되므로 학번만 정확하면 중복이 없다 (2026-09-05) */}
+              <p className="field__hint">이미 검사한 적이 있다면 같은 학번으로 진행하세요 — 최신 응답으로 갱신되고 중복 등록되지 않아요.</p>
             </div>
             <div className="field">
               <label className="field__label" htmlFor="profile-name">성명</label>

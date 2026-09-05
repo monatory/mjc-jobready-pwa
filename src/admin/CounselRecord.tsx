@@ -7,7 +7,7 @@
 // 담당자(행정)에게는 이 컴포넌트 전체가 렌더되지 않는다 (§6.4).
 import { useEffect, useRef, useState } from "react";
 import type { StudentRecord } from "./mockStudents";
-import { surveyAnswerLabel } from "./mockStudents";
+import { surveyAnswerLabel, wantsCounsel } from "./mockStudents";
 import {
   saveOutreachEntry,
   OUTREACH_LABELS,
@@ -138,39 +138,62 @@ export default function CounselRecord({
           : "⚠ 연계 기관을 선택해 주세요 — 연계 완료 이후 단계는 기관 기록이 필요합니다.",
         true
       );
+    // "해당 없음"으로 되돌리면 기관·연계일·메모는 함께 비운다 — 칸이 숨겨진 채 옛 값이 저장돼
+    // CSV 연계기관 열에 잔여 값이 남던 문제 (점검 CNS-10)
+    if (refStage === "NONE") {
+      setRefAgency("");
+      setRefDate("");
+      setRefNote("");
+    }
     void doSave(
       {
-        referral: {
-          stage: refStage,
-          agency_id: refAgency || undefined,
-          referred_at: refDate || undefined,
-          note: refNote || undefined,
-        },
+        referral:
+          refStage === "NONE"
+            ? { stage: "NONE" }
+            : {
+                stage: refStage,
+                agency_id: refAgency || undefined,
+                referred_at: refDate || undefined,
+                note: refNote || undefined,
+              },
       },
       undefined,
       "외부 연계 저장됨"
     );
   };
-  const saveEmployment = () =>
+  const saveEmployment = () => {
+    if (empStatus === "NONE") {
+      setEmployer("");
+      setEmpDate("");
+      setEmpNote("");
+    }
     void doSave(
       {
-        employment: {
-          status: empStatus,
-          employer: employer || undefined,
-          date: empDate || undefined,
-          note: empNote || undefined,
-        },
+        employment:
+          empStatus === "NONE"
+            ? { status: "NONE" }
+            : {
+                status: empStatus,
+                employer: employer || undefined,
+                date: empDate || undefined,
+                note: empNote || undefined,
+              },
       },
       undefined,
       "취업상태 저장됨"
     );
+  };
 
   return (
     <div className="counsel-record">
       {/* ① 요약 스트립 — 한눈에 */}
       <div className="counsel-summary">
-        <span className={`sum-badge ${student.survey.counsel_wish === "YES" ? "sum-badge--hot" : ""}`}>
-          상담 {student.survey.counsel_wish === "YES" ? "희망" : "미희망"}
+        {/* 설문 상담희망 또는 결과지 상담 신청 버튼 — 둘 중 하나면 희망 (2026-09-05 이중장치) */}
+        <span
+          className={`sum-badge ${wantsCounsel(student) ? "sum-badge--hot" : ""}`}
+          title={student.counsel_requested_at ? `결과지에서 상담 신청: ${localDateTimeStr(student.counsel_requested_at)}` : undefined}
+        >
+          상담 {student.survey.counsel_wish === "YES" ? "희망" : student.counsel_requested_at ? "신청(결과지)" : "미희망"}
         </span>
         <span className={`sum-badge ${student.survey.gov_link === "USE" ? "sum-badge--hot" : ""}`}>
           정부지원 {surveyAnswerLabel("gov_link", student.survey.gov_link)}
@@ -255,7 +278,8 @@ export default function CounselRecord({
             placeholder={`${sessions.length + 1}회차 상담 내용`}
             value={sessContent}
             onChange={(e) => setSessContent(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addSession(); }}
+            // 한글 IME 조합 중 Enter는 무시 — 조합 확정 Enter가 회차를 이중 등록할 수 있다 (점검 C6)
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addSession(); }}
           />
           <button className="btn btn--primary btn--sm" disabled={!sessContent.trim() || saving} onClick={addSession}>
             회차 추가

@@ -138,6 +138,9 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
     if (editing === "NEW" && list.some((a) => a.recommendation_code === code))
       return `이미 등록된 코드입니다: ${code}`;
     if (!f.name.trim()) return "활동명을 입력해 주세요.";
+    // 길이 상한은 서버 규칙(validReco: name ≤100자, student_desc ≤500자)과 동일 — 화면에서 먼저 걸러
+    // 규칙 거부가 "저장 실패(네트워크·권한 확인)"로 오안내되지 않게 (점검 ADM-05)
+    if (f.name.trim().length > 100) return "활동명은 100자 이내로 입력해 주세요.";
     if (f.levels.length === 0) return "적용 Level을 1개 이상 선택해 주세요.";
     if (f.weak_domains.length === 0) return "취약영역을 1개 이상 선택해 주세요. (특정 영역과 무관하면 '전체(범용)')";
     if (!(f.priority >= 1 && f.priority <= 5)) return "우선순위는 1(높음)~5(낮음) 사이여야 합니다.";
@@ -147,6 +150,7 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
     if (f.active && f.active_to < todayStr())
       return `활성 종료일(${f.active_to})이 이미 지났습니다. 기간을 연장하거나 "활성" 체크를 해제해 주세요.`;
     if (!f.student_desc.trim()) return "학생 노출 설명을 입력해 주세요. (결과지에 그대로 표시됩니다)";
+    if (f.student_desc.trim().length > 500) return "학생 노출 설명은 500자 이내로 입력해 주세요.";
     return "";
   };
 
@@ -322,7 +326,7 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
             </div>
             <div className="field">
               <label className="field__label" htmlFor="reco-name">활동명</label>
-              <input id="reco-name" className="input" value={form.name} placeholder="예: 잡카페 이력서 클리닉"
+              <input id="reco-name" className="input" value={form.name} placeholder="예: 잡카페 이력서 클리닉" maxLength={100}
                 onChange={(e) => set("name", e.target.value)} />
             </div>
             <div className="field">
@@ -381,7 +385,7 @@ export default function RecoMasterPanel({ editor }: { editor: string }) {
             </div>
             <div className="field field--full">
               <label className="field__label" htmlFor="reco-desc">학생 노출 설명 (결과지에 그대로 표시)</label>
-              <textarea id="reco-desc" className="input" rows={2} value={form.student_desc}
+              <textarea id="reco-desc" className="input" rows={2} value={form.student_desc} maxLength={500}
                 placeholder='예: "희망직무를 1~2개로 구체화하고 준비계획을 세워보세요."'
                 onChange={(e) => set("student_desc", e.target.value)} />
             </div>

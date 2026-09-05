@@ -241,9 +241,17 @@ export async function registerAccount(input: {
 
 type LoginResult = { ok: boolean; message: string; session?: AdminSession };
 
+/** 브라우저 저장소가 막힌 환경(사이트 데이터 차단 등) — 세션을 보관할 수 없어 로그인 상태가 유지되지 않는다 */
+class StorageBlockedError extends Error {}
+
 function storeSession(id: string, name: string, role: AdminRole): AdminSession {
   const session: AdminSession = { id, name, role, login_at: new Date().toISOString() };
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // 여기서 throw가 새어 나가면 로그인 버튼이 "처리 중"에 고착됐다 (점검 A7) — login()이 안내 문구로 바꾼다
+    throw new StorageBlockedError("storage blocked");
+  }
   // 로그인으로 읽기 권한이 생겼으므로 학생 데이터 캐시 재조회 (동적 import — 순환 방지)
   void import("./responsesSource").then((m) => m.invalidateStudentsCache());
   return session;
@@ -335,11 +343,22 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
 
 export async function login(id: string, password: string): Promise<LoginResult> {
   const normalized = id.trim().toLowerCase();
-  if (CLOUD_ENABLED && normalized.includes("@")) {
-    const cloud = await cloudLogin(normalized, password);
-    if (cloud) return cloud;
+  try {
+    if (CLOUD_ENABLED && normalized.includes("@")) {
+      const cloud = await cloudLogin(normalized, password);
+      if (cloud) return cloud;
+    }
+    return await localLogin(normalized, password);
+  } catch (e) {
+    // 예상 밖 예외를 화면까지 보내지 않는다 — 버튼이 "처리 중"에 고착되던 문제 (점검 A7)
+    if (e instanceof StorageBlockedError)
+      return {
+        ok: false,
+        message: "브라우저 저장소가 차단되어 로그인 상태를 유지할 수 없습니다. 시크릿 모드·사이트 데이터 차단을 해제하고 다시 시도해 주세요.",
+      };
+    if (CLOUD_ENABLED) fbSignOut(getAuthInst()).catch(() => {}); // 세션 없이 Firebase만 로그인된 상태 방지
+    return { ok: false, message: "로그인 처리 중 오류가 났습니다. 잠시 후 다시 시도해 주세요." };
   }
-  return localLogin(normalized, password);
 }
 
 export function getSession(): AdminSession | null {
@@ -364,6 +383,7 @@ export function logout(): void {
     try {
       localStorage.removeItem("mjc_ready_outreach");
       localStorage.removeItem("mjc_ready_agencies");
+      localStorage.removeItem("mjc_ready_agencies_archived");
     } catch {
       /* 제거 실패는 치명적이지 않음 */
     }

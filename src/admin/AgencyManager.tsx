@@ -30,7 +30,7 @@ export default function AgencyManager() {
   // 공유 반영 실패는 반드시 표시 — 다른 상담사에게 안 보이는 "유령 등록" 방지 (감사 C4-12)
   // 이전 성공 토스트의 타이머가 뒤이어 온 실패 경고를 1.5초 만에 지우던 문제 — 타이머를 갈아끼운다 (점검 C3)
   const showResult = (result: AgencySaveResult, okMsg: string, failMsg: string) => {
-    if (result === "FAIL" || result === "CONFLICT") setMsg({ text: failMsg, error: true });
+    if (result === "FAIL" || result === "CONFLICT" || result === "DELETED") setMsg({ text: failMsg, error: true });
     else setMsg({ text: `${okMsg} ✓`, error: false });
     window.clearTimeout(msgTimer.current);
     msgTimer.current = window.setTimeout(() => setMsg(null), result === "OK" || result === "LOCAL" ? 1500 : 6000);
@@ -50,6 +50,16 @@ export default function AgencyManager() {
         if (latest) startEdit(latest);
         setBusy(false);
         showResult(result, "", "⚠ 저장하지 않았습니다 — 다른 상담사가 방금 이 기관을 수정했습니다. 최신 내용을 불러왔으니 확인한 뒤 다시 저장해 주세요.");
+        return;
+      }
+      if (result === "DELETED") {
+        // 다른 상담사가 이미 삭제한 기관 — 예전엔 "수정됨 ✓"으로 위장됐다 (점검 CNS-04)
+        setBusy(false);
+        setAgencies(list);
+        setEditId(null);
+        setEditBase(undefined);
+        setForm(EMPTY);
+        showResult(result, "", "⚠ 저장하지 않았습니다 — 이 기관은 다른 상담사가 이미 삭제했습니다. 목록에서 제거했으니 필요하면 새로 등록해 주세요.");
         return;
       }
       setBusy(false);
@@ -96,23 +106,24 @@ export default function AgencyManager() {
           </label>
           <label className="adv-filter__field">
             <span>기관명 (필수)</span>
-            <input className="input" placeholder="예: 서대문고용복지플러스센터" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            {/* 길이 상한 — 실수로 붙여넣은 장문이 명단·CSV를 깨뜨리지 않게 (점검 ADM-05) */}
+            <input className="input" maxLength={100} placeholder="예: 서대문고용복지플러스센터" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </label>
           <label className="adv-filter__field">
             <span>기관 연락처</span>
-            <input className="input" placeholder="예: 02-123-4567" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} />
+            <input className="input" maxLength={40} placeholder="예: 02-123-4567" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} />
           </label>
           <label className="adv-filter__field">
             <span>기관 담당자</span>
-            <input className="input" placeholder="예: 김주무관" value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} />
+            <input className="input" maxLength={50} placeholder="예: 김주무관" value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} />
           </label>
           <label className="adv-filter__field">
             <span>사업명 / 채용분야</span>
-            <input className="input" placeholder="예: 국민취업지원제도 1유형" value={form.program} onChange={(e) => setForm({ ...form, program: e.target.value })} />
+            <input className="input" maxLength={100} placeholder="예: 국민취업지원제도 1유형" value={form.program} onChange={(e) => setForm({ ...form, program: e.target.value })} />
           </label>
           <label className="adv-filter__field">
             <span>비고</span>
-            <input className="input" placeholder="예: 청년 대상, 재학생 신청 가능" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            <input className="input" maxLength={300} placeholder="예: 청년 대상, 재학생 신청 가능" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
           </label>
         </div>
         <div className="adv-filter__actions">

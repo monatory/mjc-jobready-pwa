@@ -14,6 +14,7 @@ import {
 } from "./csvExport";
 import { levelRules } from "../lib/dataLoader";
 import RecoMasterPanel from "./RecoMasterPanel";
+import { wantsCounsel } from "./mockStudents";
 
 const rules = levelRules as unknown as {
   jas_cutoff_level3: number;
@@ -72,7 +73,7 @@ export default function Dashboard() {
         s.result.jas >= rules.jas_cutoff_level3 &&
         rules.gates.timing_gate.values.includes(s.survey.employment_timing) // level_rules 주입 — 중복 하드코딩 제거 (감사 P3-13)
     ).length;
-    const counsel = periodStudents.filter((s) => s.survey.counsel_wish === "YES").length;
+    const counsel = periodStudents.filter(wantsCounsel).length; // 설문 희망 + 결과지 신청 (2026-09-05)
     const nonEmp = periodStudents.filter((s) => s.result.routeTag === "FURTHER_STUDY_STARTUP").length;
     return { total, byLevel, avgJas, priority, counsel, nonEmp };
   }, [periodStudents]);
@@ -87,7 +88,7 @@ export default function Dashboard() {
           count: list.length,
           avgJas: Math.round(list.reduce((s, x) => s + x.result.jas, 0) / list.length),
           l34: list.filter((s) => s.result.level >= 3).length,
-          counsel: list.filter((s) => s.survey.counsel_wish === "YES").length,
+          counsel: list.filter(wantsCounsel).length,
         };
       }),
     [periodStudents, depts]

@@ -65,9 +65,13 @@ function studentStateRow(
     session_count: outreach[s.student_id]?.sessions?.length ?? 0,
     counsel_summary: outreach[s.student_id]?.final_summary ?? "",
     referral_stage: REFERRAL_LABELS[referralStageOf(outreach, s.student_id)],
-    referral_agency: agencyName(agencies, outreach[s.student_id]?.referral?.agency_id),
+    // 단계가 "해당 없음"이면 기관·취업처 잔여 값은 내보내지 않는다 (점검 CNS-10 — 구버전 기록 방어)
+    referral_agency:
+      referralStageOf(outreach, s.student_id) === "NONE"
+        ? ""
+        : agencyName(agencies, outreach[s.student_id]?.referral?.agency_id),
     employment_status: EMPLOYMENT_LABELS[employmentStatusOf(outreach, s.student_id)],
-    employer: outreach[s.student_id]?.employment?.employer ?? "",
+    employer: employmentStatusOf(outreach, s.student_id) === "NONE" ? "" : outreach[s.student_id]?.employment?.employer ?? "",
     semester: s.semester,
     career_direction: surveyAnswerLabel("career_direction", s.survey.career_direction),
     major_link: surveyAnswerLabel("major_link", s.unscored.major_link),
@@ -82,7 +86,8 @@ function studentStateRow(
     home_region: surveyAnswerLabel("home_region", s.unscored.home_region),
     region: surveyAnswerLabel("region", s.unscored.region),
     gov_link: surveyAnswerLabel("gov_link", s.survey.gov_link),
-    counsel_wish: s.survey.counsel_wish === "YES" ? "희망" : "미희망",
+    // 설문 희망 / 결과지 상담 신청 버튼(이중장치, 2026-09-05) / 미희망
+    counsel_wish: s.survey.counsel_wish === "YES" ? "희망" : s.counsel_requested_at ? "희망(결과지 신청)" : "미희망",
     // 동의 시각이 기록된 응답(2026-09-03 이후)은 일시를 함께 — 구버전은 구조적 증거(동의 없이는 진입 불가)만 (점검 S2)
     consent_view: s.consent_at ? `동의 (${localDateStr(s.consent_at)})` : "동의",
   };
