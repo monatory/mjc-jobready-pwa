@@ -205,6 +205,7 @@ export default function Survey() {
                 id="profile-dept"
                 className={`input${errCls(fieldOk.dept)}`}
                 value={profile.dept}
+                maxLength={60}
                 placeholder="예: 컴퓨터공학과"
                 onChange={(e) => setProfileState({ ...profile, dept: e.target.value })}
               />

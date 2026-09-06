@@ -127,15 +127,32 @@ export default function CounselRecord({
     okMsg: string
   ): Promise<OutreachSaveResult> => {
     setSaving(true);
+    const prev = baseRef.current;
     const { all, result } = await saveOutreachEntry(studentId, patch, by, ops);
     setSaving(false);
-    // 저장 결과(병합본)가 새 기준값 — 이후 변경 감지·patch 계산은 이 값과 비교한다 (점검 ②)
-    if (result !== "FAIL") baseRef.current = all[studentId];
+    if (result !== "FAIL") {
+      // 저장 결과(병합본)가 새 기준값 — 이후 변경 감지·patch 계산은 이 값과 비교한다 (점검 ②)
+      const next = all[studentId];
+      baseRef.current = next;
+      // 내가 건드리지 않은 필드(화면값 == 이전 기준값)는 병합본으로 맞춘다 — 다른 상담사가 그 사이 바꾼 값을
+      // 화면이 옛 값으로 들고 있다가 다음 저장에서 되돌리던 경로 차단 (배포 전 리뷰 중간-1)
+      if (status === (prev?.status ?? "NONE")) setStatus(next?.status ?? "NONE");
+      if (memo === (prev?.memo ?? "")) setMemo(next?.memo ?? "");
+      if (finalSummary === (prev?.final_summary ?? "")) setFinalSummary(next?.final_summary ?? "");
+      if (refStage === (prev?.referral?.stage ?? "NONE")) setRefStage(next?.referral?.stage ?? "NONE");
+      if (refAgency === (prev?.referral?.agency_id ?? "")) setRefAgency(next?.referral?.agency_id ?? "");
+      if (refDate === (prev?.referral?.referred_at ?? "")) setRefDate(next?.referral?.referred_at ?? "");
+      if (refNote === (prev?.referral?.note ?? "")) setRefNote(next?.referral?.note ?? "");
+      if (empStatus === (prev?.employment?.status ?? "NONE")) setEmpStatus(next?.employment?.status ?? "NONE");
+      if (employer === (prev?.employment?.employer ?? "")) setEmployer(next?.employment?.employer ?? "");
+      if (empDate === (prev?.employment?.date ?? "")) setEmpDate(next?.employment?.date ?? "");
+      if (empNote === (prev?.employment?.note ?? "")) setEmpNote(next?.employment?.note ?? "");
+    }
     onSave(all);
     if (result === "FAIL")
       // 실패분은 다음 저장·새로고침·로그아웃에서 사라진다(저장 base는 항상 원격) — "보관됐다"는 안내는 사실과
-      // 달라 상담사가 안심하고 떠났다 (점검 ③)
-      flash("⚠ 공유 저장소 반영 실패 — 다른 상담사에게 공유되지 않았습니다. 이 화면을 떠나거나 새로고침하면 방금 입력이 사라지니, 네트워크 확인 후 지금 바로 다시 저장해 주세요.", true);
+      // 달라 상담사가 안심하고 떠났다 (점검 ③). 실패한 회차는 목록에 보여도 공유되지 않은 것.
+      flash("⚠ 공유 저장소 반영 실패 — 다른 상담사에게 공유되지 않았습니다(목록에 보이더라도 이 브라우저에만 있는 것). 이 화면을 떠나거나 새로고침하면 방금 입력이 사라지니, 네트워크 확인 후 지금 바로 다시 저장해 주세요.", true);
     else flash(`${okMsg} ✓`);
     return result;
   };

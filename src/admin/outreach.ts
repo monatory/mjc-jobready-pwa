@@ -111,14 +111,17 @@ export async function saveOutreachEntry(
   // 순환 import 방지 위해 동적 import
   const m = await import("./cloudStore");
   const { result, entry } = await m.pushOutreachMerged(studentId, stamped, ops, prev);
-  all[studentId] = entry; // 병합 결과(원격 최신 기반)를 로컬 캐시·화면에 반영
+  // 트랜잭션 동안 자동 pull(탭 복귀)이 캐시를 최신으로 바꿔 두었을 수 있다 — 시작 시점의 all을 통째로 쓰면
+  // 다른 학생 항목이 옛 값으로 되돌아간다. 최신 캐시를 다시 읽어 이 학생 항목만 반영 (배포 전 리뷰 낮음-2)
+  const latest = loadOutreach();
+  latest[studentId] = entry; // 병합 결과(원격 최신 기반)를 로컬 캐시·화면에 반영
   try {
-    localStorage.setItem(KEY, JSON.stringify(all));
+    localStorage.setItem(KEY, JSON.stringify(latest));
   } catch {
     /* localStorage 실패 — 클라우드 반영 결과(result)가 진실 */
   }
   notifyOutreachChanged();
-  return { all, result };
+  return { all: latest, result };
 }
 
 /** 학번 교정 시 로컬 캐시의 상담 기록 키 이동 (감사 F05 — 클라우드 이동은 responsesSource에서) */

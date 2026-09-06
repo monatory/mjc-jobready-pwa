@@ -138,21 +138,23 @@ export async function deleteStudentResponses(
     // 건너뛴다 — 화면 캐시만 믿고 지우면 그 사이 들어온 실제 응답이 지워졌다 (2026-09-06 점검 ⑦)
     const fresh = await Promise.all(allRefs.map(({ ref }) => getDoc(ref)));
     let changed = 0;
+    const changedIds = new Set<string>();
     const responseRefs = allRefs
       .filter(({ rec }, i) => {
         const snap = fresh[i];
-        if (!snap.exists()) return false; // 이미 없음 — 지울 것 없음
+        if (!snap.exists()) return false; // 이미 없음 — 지울 것 없음 (상담 기록은 그대로 삭제 대상)
         const savedAt = (snap.data() as { saved_at?: string }).saved_at ?? "";
         if (rec.completed_at && savedAt && savedAt !== rec.completed_at) {
           changed += 1;
+          changedIds.add(rec.student_id);
           return false;
         }
         return true;
       })
       .map(({ ref }) => ref);
-    // 응답이 그 사이 갱신된 학번의 상담 기록도 남긴다
-    const keptIds = new Set(allRefs.filter(({ ref }) => !responseRefs.includes(ref)).map(({ rec }) => rec.student_id));
-    const safeOutreachIds = outreachIds.filter((id) => !keptIds.has(id));
+    // 응답이 그 사이 갱신된(재제출된) 학번의 상담 기록만 남긴다 — 이미 없는 응답의 학번까지 보존하면 상담 기록이
+    // 고아로 남아 그 학번의 다음 제출에 옛 기록이 붙는다 (배포 전 리뷰 중간-2)
+    const safeOutreachIds = outreachIds.filter((id) => !changedIds.has(id));
     const outreachRefs = safeOutreachIds.map((id) => doc(db, COL.outreach, id));
     const targets = [...responseRefs, ...outreachRefs];
     if (targets.length === 0) {

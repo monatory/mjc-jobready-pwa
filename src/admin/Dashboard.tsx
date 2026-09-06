@@ -41,7 +41,10 @@ export default function Dashboard() {
   const [folded, toggleFold] = useSidebarFold();
 
   // 로그인 후 6시간 자동 로그아웃 — 모든 역할 (2026-09-06)
-  useAutoLogout(session, () => setSession(null));
+  useAutoLogout(session, () => {
+    setSession(null);
+    setSection("overview"); // 수동 로그아웃과 동일 (리뷰 낮음-4)
+  });
 
   // 상담사 계열은 이 화면 접근 불가 — 전용 워크스페이스로 이동
   useEffect(() => {

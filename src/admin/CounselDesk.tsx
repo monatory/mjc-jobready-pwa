@@ -49,7 +49,11 @@ export default function CounselDesk() {
   );
 
   // 로그인 후 6시간 자동 로그아웃 — 모든 역할 (2026-09-06)
-  useAutoLogout(session, () => setSession(null));
+  useAutoLogout(session, () => {
+    setSession(null);
+    setSection("students");
+    setCloudState(CLOUD_ENABLED ? null : "LOCAL"); // 수동 로그아웃과 동일하게 화면 부수 상태도 초기화 (리뷰 낮음-4)
+  });
 
   // 담당자(행정)는 이 페이지를 볼 수 없다 — 관리자 화면으로 돌려보냄 (핵심 요구)
   useEffect(() => {

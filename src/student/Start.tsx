@@ -11,7 +11,9 @@ function maskProfile(p: StudentProfile | null): string {
   if (!p) return "";
   const name = p.name.trim();
   const id = p.student_id.trim();
-  const maskedName = name.length >= 2 ? `${name[0]}${"*".repeat(name.length - 2)}${name[name.length - 1]}` : name;
+  // 2자 성명은 첫 글자만 남긴다 — 첫+끝 방식이면 2자는 그대로 노출됐다 (배포 전 리뷰 중간-3)
+  const maskedName =
+    name.length >= 3 ? `${name[0]}${"*".repeat(name.length - 2)}${name[name.length - 1]}` : name.length === 2 ? `${name[0]}*` : name;
   const maskedId = id.length >= 4 ? `****${id.slice(-4)}` : id;
   const parts = [maskedName && `${maskedName} 님`, maskedId && `학번 ${maskedId}`].filter(Boolean);
   return parts.length ? `${parts.join(" · ")}의 진단` : "";
