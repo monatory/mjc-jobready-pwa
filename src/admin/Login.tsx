@@ -1,7 +1,7 @@
 // 관리자 로그인·계정 신청 화면 — 시범 프로토타입(로컬 저장소 인증, auth.ts 주석 참조)
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { ensureMasterAccount, login, registerAccount, sendResetMail, ROLE_LABELS, type AdminSession } from "./auth";
+import { ensureMasterAccount, login, registerAccount, sendResetMail, consumeAutoLogoutNotice, ROLE_LABELS, type AdminSession } from "./auth";
 import { CLOUD_ENABLED } from "../lib/firebase";
 
 type Tab = "login" | "register";
@@ -10,6 +10,12 @@ export default function AdminLogin({ onLogin }: { onLogin: (session: AdminSessio
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("login");
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  // 자동 로그아웃(6시간 만료)으로 온 경우 사유를 먼저 보여 준다 — 아무 안내 없이 로그인 화면이 뜨면 오류로 오해한다.
+  // useState 초기값 함수에서 읽으면 개발 StrictMode의 이중 호출로 사유가 첫 호출에 소비돼 표시되지 않았다 → 효과에서 읽는다
+  useEffect(() => {
+    if (consumeAutoLogoutNotice() === "EXPIRED")
+      setMessage({ text: "로그인 후 6시간이 지나 자동으로 로그아웃되었습니다. 다시 로그인해 주세요.", ok: true });
+  }, []);
   const [busy, setBusy] = useState(false);
 
   // 로그인 입력

@@ -373,10 +373,48 @@ export async function login(id: string, password: string): Promise<LoginResult> 
   }
 }
 
+// ── 자동 로그아웃 (2026-09-06 사용자 결정: 로그인 후 6시간, 모든 역할) ──
+// 공용 PC·퇴근 후 켜둔 탭에 세션이 무기한 남는 것을 막는다. 만료는 로그인 시각(login_at) 기준 절대 시간이라
+// 활동 여부와 무관하게 항상 같은 규칙으로 동작한다. 만료로 로그아웃되면 로그인 화면이 사유를 1회 표시한다.
+export const SESSION_MAX_MS = 6 * 60 * 60 * 1000;
+const AUTO_LOGOUT_KEY = "mjc_ready_auto_logout";
+
+export function isSessionExpired(session: AdminSession, now = Date.now()): boolean {
+  const at = Date.parse(session.login_at);
+  return !Number.isFinite(at) || now - at >= SESSION_MAX_MS;
+}
+
+/** 만료 등 시스템 사유로 로그아웃 — 사유를 남겨 로그인 화면이 안내한다 */
+export function autoLogout(reason: string): void {
+  try {
+    sessionStorage.setItem(AUTO_LOGOUT_KEY, reason);
+  } catch {
+    /* 저장 불가 — 안내 없이 로그아웃만 */
+  }
+  logout();
+}
+
+/** 로그인 화면이 자동 로그아웃 사유를 1회 읽고 지운다 */
+export function consumeAutoLogoutNotice(): string | null {
+  try {
+    const v = sessionStorage.getItem(AUTO_LOGOUT_KEY);
+      if (v) sessionStorage.removeItem(AUTO_LOGOUT_KEY);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
 export function getSession(): AdminSession | null {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as AdminSession) : null;
+    const session = raw ? (JSON.parse(raw) as AdminSession) : null;
+    // 6시간이 지난 세션은 새로고침·재진입 시점에도 복원하지 않는다
+    if (session && isSessionExpired(session)) {
+      autoLogout("EXPIRED");
+      return null;
+    }
+    return session;
   } catch {
     return null;
   }

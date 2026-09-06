@@ -26,6 +26,7 @@ import Accounts from "./Accounts";
 import PasswordModal from "./PasswordModal";
 import StudentsPanel, { LEVEL_NAMES } from "./StudentsPanel";
 import { useSidebarFold } from "./useSidebarFold";
+import { useAutoLogout } from "./useAutoLogout";
 
 type Section = "overview" | "students" | "recommend" | "download" | "accounts";
 
@@ -38,6 +39,9 @@ export default function Dashboard() {
   const [pwModal, setPwModal] = useState(false);
   const [section, setSection] = useState<Section>("overview");
   const [folded, toggleFold] = useSidebarFold();
+
+  // 로그인 후 6시간 자동 로그아웃 — 모든 역할 (2026-09-06)
+  useAutoLogout(session, () => setSession(null));
 
   // 상담사 계열은 이 화면 접근 불가 — 전용 워크스페이스로 이동
   useEffect(() => {

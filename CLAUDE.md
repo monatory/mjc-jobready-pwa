@@ -274,6 +274,9 @@ Rules(상담 기록·등록부는 상담사 계열만)** 가 담당한다. 주�
 - 구현: `auth.ts`(4역할 + `SECTION_ROLES` + `isCounselSide`/`homeRoute`/`toggleCounselorLead`) ·
   `CounselDesk.tsx`(워크스페이스, 초록 테마) · `StudentsPanel.tsx`(명단 공용, `showOutreach` 스위치) ·
   `Accounts.tsx`(역할군별 계정 패널) · `Dashboard.tsx`(행정 전용) · `PasswordModal.tsx`(공용)
+- **자동 로그아웃 (2026-09-06 사용자 결정)**: 모든 역할은 **로그인 후 6시간**이 지나면 자동 로그아웃된다
+  (`auth.SESSION_MAX_MS`, `useAutoLogout` — 1분 주기 + 탭 복귀·포커스 시 확인, 새로고침 시 `getSession`이 만료 세션을
+  복원하지 않음). 로그인 화면이 "6시간이 지나 자동으로 로그아웃되었습니다"를 1회 안내한다. 무활동 기준은 두지 않았다.
 - **시범 한계**: localStorage 로컬 계정 + SHA-256 해시(브라우저별 독립). 클라이언트 권한 분리는 UI 수준 —
   **실명 수집 전 Firebase Auth + Security Rules로 서버 강제 필수**(§7.2). 연락 기록 공유도 Firestore 연동 시 실시간화.
 

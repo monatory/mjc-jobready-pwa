@@ -15,6 +15,7 @@ import StudentsPanel, { needsOutreachWith } from "./StudentsPanel";
 import AgencyManager from "./AgencyManager";
 import { loadOutreach, onOutreachChange, referralStageOf } from "./outreach";
 import { useSidebarFold } from "./useSidebarFold";
+import { useAutoLogout } from "./useAutoLogout";
 
 type Section = "students" | "agencies" | "counselors";
 const SECTION_PERMS: Record<Section, string> = {
@@ -46,6 +47,9 @@ export default function CounselDesk() {
       }),
     []
   );
+
+  // 로그인 후 6시간 자동 로그아웃 — 모든 역할 (2026-09-06)
+  useAutoLogout(session, () => setSession(null));
 
   // 담당자(행정)는 이 페이지를 볼 수 없다 — 관리자 화면으로 돌려보냄 (핵심 요구)
   useEffect(() => {
