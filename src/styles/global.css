@@ -976,6 +976,24 @@ body {
 }
 
 /* 응답 제출 실패 배너 — 결과지 하단, 재시도 버튼 동반 */
+/* 휴대전화 인쇄 대안 안내 (2026-09-06) — 인쇄 창이 열리지 않는 인앱·모바일 브라우저용 */
+.print-help {
+  border-color: var(--navy);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.88rem;
+}
+.print-help__list {
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+}
+.print-help__list b {
+  color: var(--ink);
+}
 .submit-fail {
   text-align: center;
   border: 1.5px solid #c0392b;
@@ -1051,7 +1069,8 @@ body {
   .actions,
   .submit-fail,
   .cta-card .btn,
-  .cta-card__hint {
+  .cta-card__hint,
+  .print-help {
     /* 버튼을 숨기면 "이 버튼을 누르면…" 힌트도 함께 숨긴다 (점검 낮음) */
     display: none !important;
   }

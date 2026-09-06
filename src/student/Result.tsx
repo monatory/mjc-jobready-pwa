@@ -27,6 +27,8 @@ const rules = levelRules as unknown as {
 /** 앱 내장(인앱) 브라우저 판별 — 카카오톡·네이버·인스타그램·페이스북·라인. 인쇄 안내 문구 표시용 */
 const IN_APP_BROWSER =
   typeof navigator !== "undefined" && /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
+/** 터치 기기(휴대전화·태블릿) — 인쇄 창이 뜨지 않는 브라우저(인앱·일부 삼성 인터넷)를 위한 안내·대안 표시 기준 */
+const IS_TOUCH_DEVICE = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
 
 const templates = resultTemplates as unknown as {
   legal_footer: string;
@@ -153,6 +155,33 @@ export default function Result() {
   // 이중장치 (2026-09-05 사용자 요구). 배점 항목인 survey.counsel_wish는 바꾸지 않고 별도 필드로 저장 →
   // payload가 바뀌므로 아래 제출 effect가 자동으로 재제출한다.
   const [counselReq, setCounselReq] = useState(() => getCounselRequest());
+  // 휴대전화 인쇄 대응 (2026-09-06 사용자 보고: "PC는 되는데 폰에서는 잘 안 된다") — 카카오톡 등 인앱 브라우저와 일부
+  // 모바일 브라우저는 window.print()가 아무 반응이 없다. 인쇄 창이 열렸는지(beforeprint / print 미디어 전환)를
+  // 관찰해, 터치 기기에서 1.5초 안에 열리지 않으면 대안 안내(브라우저 메뉴 인쇄·다른 브라우저로 열기·결과 요약 공유)를 띄운다.
+  const [printHelp, setPrintHelp] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const printResult = () => {
+    let opened = false;
+    const mark = () => {
+      opened = true;
+    };
+    const mq = typeof window.matchMedia === "function" ? window.matchMedia("print") : null;
+    const onMq = (e: MediaQueryListEvent) => {
+      if (e.matches) opened = true;
+    };
+    window.addEventListener("beforeprint", mark);
+    mq?.addEventListener?.("change", onMq);
+    try {
+      window.print();
+    } catch {
+      /* 미지원 브라우저 — 아래 안내로 대체 */
+    }
+    window.setTimeout(() => {
+      window.removeEventListener("beforeprint", mark);
+      mq?.removeEventListener?.("change", onMq);
+      if (!opened && (IS_TOUCH_DEVICE || IN_APP_BROWSER)) setPrintHelp(true);
+    }, 1500);
+  };
   const requestCounsel = () => {
     if (!counselReq) setCounselReq(setCounselRequest());
     // 제출이 막힌 상태(형식 오류·규칙 거부·네트워크 실패)나 로컬 모드에서는 "연락드립니다"를 확정적으로
@@ -281,6 +310,36 @@ export default function Result() {
   const routeLabel = isNonEmployment ? "진학·창업 Route" : r.routeTag === "UNDECIDED" ? "진로탐색 Route" : "취업준비 Route";
 
   const { weak, recs } = analysis; // hasData·evalResult·analysis 보장 구간
+
+  // 결과 요약 텍스트 공유·복사 — 인쇄가 안 되는 휴대전화·인앱 브라우저의 대안. 공유 시트(navigator.share)가 있으면
+  // 카카오톡 "나와의 채팅" 등으로 보낼 수 있고, 없으면 클립보드에 복사한다. 개인정보는 성명·학과만 포함(학번·연락처 제외).
+  const shareSummary = async () => {
+    const lines = [
+      `MJC-READY 진로·취업 상태진단 결과 (${todayStr()})`,
+      profile ? `${profile.name} (${profile.dept} ${gradeLabel(profile.grade)})` : "",
+      `${routeLabel} · ${templates.levels[String(r.level)].title}`,
+      `구직활성도(JAS) ${r.jas}/100${r.jrs != null ? ` · 취업준비도(JRS) ${r.jrs}` : ""}${r.cds != null ? ` · 진로발달도(CDS) ${r.cds}` : ""}`,
+      weak.length ? `보완영역: ${weak.map((w) => `${w.label}(${w.score.toFixed(2)})`).join(", ")}` : "보완영역: 없음",
+      recs.length ? `추천 활동: ${recs.map((a, i) => `${i + 1}) ${a.name}`).join(" / ")}` : "",
+      `상담 연결: ${tpl.consultant} (본관 1층 잡카페)`,
+    ].filter(Boolean);
+    const text = lines.join("\n");
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: "MJC-READY 진단 결과", text });
+        setShareMsg("공유 창을 열었어요. 카카오톡 '나와의 채팅' 등으로 보내 두면 나중에 볼 수 있어요.");
+        return;
+      }
+    } catch {
+      /* 사용자가 공유를 취소했거나 미지원 — 복사로 대체 */
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setShareMsg("결과 요약을 복사했어요. 메모장이나 카카오톡 '나와의 채팅'에 붙여넣어 보관하세요.");
+    } catch {
+      window.prompt("아래 내용을 길게 눌러 복사하세요.", text);
+    }
+  };
 
   return (
     <div className="page">
@@ -460,16 +519,38 @@ export default function Result() {
           >
             다시 진단하기
           </button>
-          <button className="btn btn--ghost" onClick={() => window.print()}>
+          <button className="btn btn--ghost" onClick={printResult}>
             결과지 인쇄·PDF 저장
           </button>
         </div>
-        {/* 카카오톡·인스타그램 등 앱 내장 브라우저는 window.print()가 동작하지 않는 경우가 많다 (점검 S11) */}
-        {IN_APP_BROWSER && (
+        {IS_TOUCH_DEVICE && !printHelp && !IN_APP_BROWSER && (
           <p className="muted small cta-card__hint">
-            ※ 카카오톡 등 앱 안에서 열었다면 인쇄·PDF 저장이 되지 않을 수 있어요. 화면 오른쪽 위 메뉴에서
-            "다른 브라우저로 열기"를 눌러 크롬·사파리에서 저장해 주세요.
+            ※ 휴대전화에서는 인쇄 창이 열리면 프린터 대신 "PDF로 저장"을 고르세요. 창이 열리지 않으면 아래 안내가 표시됩니다.
           </p>
+        )}
+        {/* 카카오톡·인스타그램 등 앱 내장 브라우저는 window.print()가 동작하지 않는 경우가 많다 (점검 S11).
+            인쇄 창이 열리지 않은 것을 감지했을 때도 같은 안내 + 결과 요약 공유 대안을 보여 준다 (2026-09-06) */}
+        {(IN_APP_BROWSER || printHelp) && (
+          <section className="card print-help">
+            <strong>{printHelp ? "인쇄 창이 열리지 않았어요" : "앱 안에서 열었다면 인쇄·PDF 저장이 안 될 수 있어요"}</strong>
+            <ol className="print-help__list">
+              <li>
+                <b>브라우저 메뉴에서 인쇄</b> — 크롬은 오른쪽 위 ⋮ → 공유 → 인쇄, 사파리는 공유(⬆) → 프린트, 삼성 인터넷은 메뉴 → 인쇄/PDF로 저장.
+                인쇄 화면에서 프린터 대신 <b>"PDF로 저장"</b>을 고르세요.
+              </li>
+              <li>
+                <b>카카오톡 등 앱 안에서 열었다면</b> 오른쪽 위 메뉴의 "다른 브라우저로 열기"로 크롬·사파리에서 여세요.
+                (결과는 이 화면에만 있어 다른 브라우저에서는 다시 진단해야 합니다 — 약 5분)
+              </li>
+              <li>
+                <b>결과 요약 보관</b> — 아래 버튼으로 요약을 나에게 보내거나(카카오톡 "나와의 채팅" 등) 복사해 두세요. 화면 캡처도 괜찮아요.
+              </li>
+            </ol>
+            <button className="btn btn--primary btn--block" onClick={shareSummary}>
+              결과 요약 공유·복사
+            </button>
+            {shareMsg && <p className="muted small cta-card__hint">{shareMsg}</p>}
+          </section>
         )}
 
         <footer className="legal">
