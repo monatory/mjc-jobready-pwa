@@ -3,7 +3,7 @@
 // (2026-09-01 감사 수정) 클라우드 모드에서 mock 폴백 금지 — 빈 DB는 "0건", 조회 실패는 "ERROR"로
 // 구분 표시한다. 가짜 학생 40명이 실측처럼 떠서 실제 아웃리치 기록이 오염되던 경로(F07) 차단.
 import { useEffect, useState } from "react";
-import { collection, getDocs, doc, runTransaction, writeBatch } from "firebase/firestore";
+import { collection, getDocs, getDoc, doc, runTransaction, writeBatch } from "firebase/firestore";
 import { CLOUD_ENABLED, COL, SEMESTER, getDb, getAuthInst, authReady } from "../lib/firebase";
 import { evaluate, type EvaluationResult } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
@@ -133,9 +133,32 @@ export async function deleteStudentResponses(
     await authReady();
     const db = getDb();
     // 실제 문서키(doc_id) 사용 — 구버전 레코드에 doc_id가 없을 때만 재구성 (점검 N6)
-    const responseRefs = recs.map((r) => doc(db, COL.responses, r.doc_id || `${r.semester || SEMESTER}_${r.student_id}`));
-    const outreachRefs = outreachIds.map((id) => doc(db, COL.outreach, id));
+    const allRefs = recs.map((r) => ({ rec: r, ref: doc(db, COL.responses, r.doc_id || `${r.semester || SEMESTER}_${r.student_id}`) }));
+    // 삭제 직전 서버 값을 다시 읽어, 명단을 불러온 뒤 같은 학번이 실제로 재제출한 문서(실시일이 달라짐)는
+    // 건너뛴다 — 화면 캐시만 믿고 지우면 그 사이 들어온 실제 응답이 지워졌다 (2026-09-06 점검 ⑦)
+    const fresh = await Promise.all(allRefs.map(({ ref }) => getDoc(ref)));
+    let changed = 0;
+    const responseRefs = allRefs
+      .filter(({ rec }, i) => {
+        const snap = fresh[i];
+        if (!snap.exists()) return false; // 이미 없음 — 지울 것 없음
+        const savedAt = (snap.data() as { saved_at?: string }).saved_at ?? "";
+        if (rec.completed_at && savedAt && savedAt !== rec.completed_at) {
+          changed += 1;
+          return false;
+        }
+        return true;
+      })
+      .map(({ ref }) => ref);
+    // 응답이 그 사이 갱신된 학번의 상담 기록도 남긴다
+    const keptIds = new Set(allRefs.filter(({ ref }) => !responseRefs.includes(ref)).map(({ rec }) => rec.student_id));
+    const safeOutreachIds = outreachIds.filter((id) => !keptIds.has(id));
+    const outreachRefs = safeOutreachIds.map((id) => doc(db, COL.outreach, id));
     const targets = [...responseRefs, ...outreachRefs];
+    if (targets.length === 0) {
+      invalidateStudentsCache();
+      return { ok: false, deleted: 0, message: changed ? `삭제하지 않았습니다 — ${changed}건은 명단을 불러온 뒤 다시 제출된 응답입니다. 목록을 새로고침해 확인해 주세요.` : "삭제할 응답이 이미 없습니다. 목록을 새로고침해 주세요." };
+    }
     // Firestore 배치 상한(500) 아래로 나눠 커밋 — 한 묶음이 실패하면 그 묶음은 통째로 남는다(원자성).
     // 뒤 묶음이 실패해도 앞 묶음은 이미 지워졌으므로 완료 건수를 세어 부분 성공을 알린다 (점검 M8)
     const CHUNK = 200;
@@ -150,7 +173,7 @@ export async function deleteStudentResponses(
     } catch (e) {
       const code = (e as { code?: string })?.code ?? "";
       const deletedResponses = Math.min(done, responseRefs.length);
-      if (deletedResponses > 0) removeOutreachLocal(outreachIds.slice(0, Math.max(0, done - responseRefs.length)));
+      if (deletedResponses > 0) removeOutreachLocal(safeOutreachIds.slice(0, Math.max(0, done - responseRefs.length)));
       invalidateStudentsCache(); // 일부 묶음만 지워졌을 수 있으므로 목록을 다시 받는다
       return {
         ok: false,
@@ -161,9 +184,13 @@ export async function deleteStudentResponses(
             : `삭제 중 오류가 났습니다 — 응답 ${deletedResponses}건은 삭제됐고 나머지는 남아 있습니다. 목록을 새로고침한 뒤 남은 건을 다시 삭제해 주세요.`,
       };
     }
-    removeOutreachLocal(outreachIds);
+    removeOutreachLocal(safeOutreachIds);
     invalidateStudentsCache();
-    return { ok: true, deleted: recs.length, message: `응답 ${recs.length}건을 삭제했습니다.` };
+    return {
+      ok: true,
+      deleted: responseRefs.length,
+      message: `응답 ${responseRefs.length}건을 삭제했습니다.${changed ? ` (${changed}건은 명단을 불러온 뒤 다시 제출된 응답이라 남겨 두었습니다)` : ""}`,
+    };
   } catch {
     return { ok: false, deleted: 0, message: "삭제를 시작하지 못했습니다. 로그인·네트워크 상태를 확인해 주세요." };
   }

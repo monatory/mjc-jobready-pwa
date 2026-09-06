@@ -45,6 +45,11 @@ export default function CounselRecord({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const studentId = student.student_id;
+  // 편집 기준값 — "이 화면에서 마지막으로 본 기록". 변경 여부(dirty)와 저장 patch(바뀐 필드만)는 prop entry가
+  // 아니라 이 스냅샷과 비교한다. 예전엔 {status, memo}를 통째로 보내 옛 캐시(memo "")로 상태만 바꿔 저장하면
+  // 다른 상담사가 방금 쓴 메모가 빈 값으로 덮였고, 카드가 열린 채 동기화가 오면 옛 값이 "미저장"으로 오판됐다
+  // (2026-09-06 점검 ②). 저장 성공·동기화 시 아래 effect가 갱신한다.
+  const baseRef = useRef<OutreachEntry | undefined>(entry);
   // ── 연락 기록 ──
   const [status, setStatus] = useState<OutreachStatus>(entry?.status ?? "NONE");
   const [memo, setMemo] = useState(entry?.memo ?? "");
@@ -66,23 +71,44 @@ export default function CounselRecord({
 
   // 저장하지 않은 입력 감지 — 모달 바깥 클릭으로 메모·요약이 조용히 사라지던 문제 (점검 C11).
   // 저장 후에는 entry가 갱신되어 화면 값과 같아지므로 자연히 false가 된다.
+  const base = baseRef.current;
   const dirty =
-    status !== (entry?.status ?? "NONE") ||
-    memo !== (entry?.memo ?? "") ||
+    status !== (base?.status ?? "NONE") ||
+    memo !== (base?.memo ?? "") ||
     sessContent.trim() !== "" ||
-    finalSummary !== (entry?.final_summary ?? "") ||
-    refStage !== (entry?.referral?.stage ?? "NONE") ||
-    refAgency !== (entry?.referral?.agency_id ?? "") ||
-    refDate !== (entry?.referral?.referred_at ?? "") ||
-    refNote !== (entry?.referral?.note ?? "") ||
-    empStatus !== (entry?.employment?.status ?? "NONE") ||
-    employer !== (entry?.employment?.employer ?? "") ||
-    empDate !== (entry?.employment?.date ?? "") ||
-    empNote !== (entry?.employment?.note ?? "");
+    finalSummary !== (base?.final_summary ?? "") ||
+    refStage !== (base?.referral?.stage ?? "NONE") ||
+    refAgency !== (base?.referral?.agency_id ?? "") ||
+    refDate !== (base?.referral?.referred_at ?? "") ||
+    refNote !== (base?.referral?.note ?? "") ||
+    empStatus !== (base?.employment?.status ?? "NONE") ||
+    employer !== (base?.employment?.employer ?? "") ||
+    empDate !== (base?.employment?.date ?? "") ||
+    empNote !== (base?.employment?.note ?? "");
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]); // 언마운트 시 초기화
+  // 카드가 열린 채 동기화(탭 복귀·새로고침·다른 상담사 저장)로 entry가 바뀌면, 입력 중이 아닐 때만 화면 값을
+  // 최신 기록으로 맞춘다. 입력 중이면 편집은 지키고 기준값도 그대로 둔다 — 저장 시 바뀐 필드만 보내므로
+  // 남의 필드를 덮지 않는다 (점검 ②·⑥ 묶음)
+  useEffect(() => {
+    if (entry === baseRef.current) return;
+    if (dirty) return;
+    baseRef.current = entry;
+    setStatus(entry?.status ?? "NONE");
+    setMemo(entry?.memo ?? "");
+    setFinalSummary(entry?.final_summary ?? "");
+    setRefStage(entry?.referral?.stage ?? "NONE");
+    setRefAgency(entry?.referral?.agency_id ?? "");
+    setRefDate(entry?.referral?.referred_at ?? "");
+    setRefNote(entry?.referral?.note ?? "");
+    setEmpStatus(entry?.employment?.status ?? "NONE");
+    setEmployer(entry?.employment?.employer ?? "");
+    setEmpDate(entry?.employment?.date ?? "");
+    setEmpNote(entry?.employment?.note ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry]);
 
   const [savedMsg, setSavedMsg] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -103,9 +129,13 @@ export default function CounselRecord({
     setSaving(true);
     const { all, result } = await saveOutreachEntry(studentId, patch, by, ops);
     setSaving(false);
+    // 저장 결과(병합본)가 새 기준값 — 이후 변경 감지·patch 계산은 이 값과 비교한다 (점검 ②)
+    if (result !== "FAIL") baseRef.current = all[studentId];
     onSave(all);
     if (result === "FAIL")
-      flash("⚠ 공유 저장소 반영 실패 — 이 브라우저에는 보관됐지만 다른 상담사에게 공유되지 않았습니다. 네트워크 확인 후 같은 내용을 다시 저장해 주세요.", true);
+      // 실패분은 다음 저장·새로고침·로그아웃에서 사라진다(저장 base는 항상 원격) — "보관됐다"는 안내는 사실과
+      // 달라 상담사가 안심하고 떠났다 (점검 ③)
+      flash("⚠ 공유 저장소 반영 실패 — 다른 상담사에게 공유되지 않았습니다. 이 화면을 떠나거나 새로고침하면 방금 입력이 사라지니, 네트워크 확인 후 지금 바로 다시 저장해 주세요.", true);
     else flash(`${okMsg} ✓`);
     return result;
   };
@@ -122,12 +152,21 @@ export default function CounselRecord({
   // 다음 회차 번호는 "가장 큰 회차 + 1" — 중간 회차를 삭제하면 배열 길이+1과 달라진다 (점검 낮음)
   const nextSeq = sessions.reduce((m, s) => (Number.isFinite(s.seq) ? Math.max(m, s.seq) : m), 0) + 1;
 
-  const saveContact = () => void doSave({ status, memo }, undefined, "연락 기록 저장됨");
-  const addSession = () => {
+  const saveContact = () => {
+    // 바뀐 필드만 보낸다 — 상태만 바꿨는데 옛 memo("")까지 보내 다른 상담사의 메모를 지우던 경로 차단 (점검 ②).
+    // 메모를 비우는 것도 기준값과 다르면 patch에 담기므로 의도적 삭제는 그대로 반영된다.
+    const patch: Partial<OutreachEntry> = {};
+    if (status !== (base?.status ?? "NONE")) patch.status = status;
+    if (memo !== (base?.memo ?? "")) patch.memo = memo;
+    if (Object.keys(patch).length === 0) return flash("변경된 내용이 없습니다.");
+    void doSave(patch, undefined, "연락 기록 저장됨");
+  };
+  const addSession = async () => {
     if (!sessContent.trim() || saving) return; // Enter 키가 버튼 잠금(saving)을 우회하던 것 (점검 낮음)
     // 회차 번호는 저장 시점의 "원격 최신 배열" 기준으로 부여(cloudStore 병합) — 동시 편집 시 중복·소실 방지
-    void doSave({}, { add: { date: sessDate, content: sessContent.trim(), by } }, "회차 기록 저장됨");
-    setSessContent("");
+    const result = await doSave({}, { add: { date: sessDate, content: sessContent.trim(), by } }, "회차 기록 저장됨");
+    // 실패하면 입력을 남겨 그대로 다시 저장할 수 있게 — 예전엔 결과를 기다리지 않고 비워 재타이핑해야 했다 (점검 ③)
+    if (result !== "FAIL") setSessContent("");
   };
   const removeSession = (seq: number) => {
     if (!window.confirm(`${seq}회차 기록을 삭제할까요?`)) return;

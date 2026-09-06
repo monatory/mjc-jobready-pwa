@@ -2,18 +2,33 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
-import { getResumeState, setConsent, getConsent, clearAll } from "../lib/sessionState";
+import { getResumeState, setConsent, getConsent, clearAll, getProfile, type StudentProfile } from "../lib/sessionState";
 import { diagItems, scoredItemEntries } from "../lib/dataLoader";
 import { CLOUD_ENABLED } from "../lib/firebase";
+
+/** 재개 모달용 마스킹 표기 — "김*수 · 학번 ****1234". 성명·학번이 없으면 빈 문자열 */
+function maskProfile(p: StudentProfile | null): string {
+  if (!p) return "";
+  const name = p.name.trim();
+  const id = p.student_id.trim();
+  const maskedName = name.length >= 2 ? `${name[0]}${"*".repeat(name.length - 2)}${name[name.length - 1]}` : name;
+  const maskedId = id.length >= 4 ? `****${id.slice(-4)}` : id;
+  const parts = [maskedName && `${maskedName} 님`, maskedId && `학번 ${maskedId}`].filter(Boolean);
+  return parts.length ? `${parts.join(" · ")}의 진단` : "";
+}
 
 export default function Start() {
   const navigate = useNavigate();
   const [agreed, setAgreed] = useState(getConsent());
   const [resume, setResume] = useState<"SURVEY" | "DIAG" | "RESULT" | null>(null);
 
+  const [resumeWho, setResumeWho] = useState("");
   useEffect(() => {
     const state = getResumeState();
-    if (state !== "NONE") setResume(state);
+    if (state !== "NONE") {
+      setResume(state);
+      setResumeWho(maskProfile(getProfile()));
+    }
   }, []);
 
   const goNext = () => {
@@ -143,10 +158,13 @@ export default function Start() {
       </main>
 
       {resume && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="resume-title">
           <div className="modal card">
-            <h3>진행 중이던 진단이 있습니다</h3>
-            <p>이어서 진행할까요, 처음부터 다시 시작할까요?</p>
+            <h3 id="resume-title">진행 중이던 진단이 있습니다</h3>
+            {/* 누구의 진단인지 마스킹해 보여 준다 — 같은 탭을 쓰는 공용 PC에서 다음 학생이 앞 학생 것을
+                "이어서" 눌러 결과지·개인정보를 보던 경로 (2026-09-06 점검 ⑧) */}
+            {resumeWho && <p className="modal__who">{resumeWho}</p>}
+            <p>{resumeWho ? "본인이 아니면 \"처음부터 다시\"를 눌러 주세요." : "이어서 진행할까요, 처음부터 다시 시작할까요?"}</p>
             <div className="modal__actions">
               {/* 모달이 뜨면 포커스를 안으로 — 키보드가 배후 동의 체크박스로 먼저 가던 것 (점검 낮음) */}
               <button className="btn btn--primary" onClick={continueTo} autoFocus>

@@ -7,7 +7,7 @@ import { signInAnonymously } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { CLOUD_ENABLED, COL, SEMESTER, getStudentAuth, getStudentDb, authReadyFor } from "./firebase";
 import { surveyItems, diagnosticBank, levelRules } from "./dataLoader";
-import { getConsentInfo, type StudentProfile, type CertEntry, type ConsentInfo, type CounselRequest } from "./sessionState";
+import { getConsentInfo, normalizePhone, type StudentProfile, type CertEntry, type ConsentInfo, type CounselRequest } from "./sessionState";
 
 export interface ResponsePayload {
   profile: StudentProfile;
@@ -63,7 +63,9 @@ async function saveNow(payload: ResponsePayload): Promise<SaveOutcome> {
       student_id: studentId,
       name: payload.profile.name.trim(),
       dept: payload.profile.dept.trim(),
-      phone: payload.profile.phone.trim(),
+      // 설문 "다음" 버튼을 거치지 않고 결과지로 돌아온 경우(재개 모달·뒤로가기) 하이픈 없는 번호가 그대로
+      // 제출돼 규칙(^01X-XXXX-XXXX$)에 거부되던 문제 — 제출 직전에도 같은 규칙으로 정규화 (2026-09-06 점검 ④)
+      phone: normalizePhone(payload.profile.phone),
     };
     const docId = `${SEMESTER}_${studentId}`;
     const consent = getConsentInfo(); // Firestore는 undefined 값을 거부하므로 있을 때만 필드 추가

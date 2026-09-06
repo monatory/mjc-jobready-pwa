@@ -56,6 +56,24 @@ export default function CounselDesk() {
   useEffect(() => {
     if (session && isCounselSide(session.role)) void pullShared().then(setCloudState);
   }, [session]);
+  // 다른 상담사의 기록은 로그인 때와 수동 새로고침 때만 내려받아, 여러 PC에서 동시에 일하면 이미 연락한
+  // 학생이 큐에 남아 중복 연락이 났다 (2026-09-06 점검 ①). 탭으로 돌아오거나 창이 포커스를 받을 때
+  // 자동으로 당겨온다 — 30초 안에 반복되면 건너뛰어 조회 비용을 막는다.
+  useEffect(() => {
+    if (!CLOUD_ENABLED || !session || !isCounselSide(session.role)) return;
+    let last = Date.now();
+    const sync = () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 30_000) return;
+      last = Date.now();
+      void pullShared().then(setCloudState);
+    };
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
+    };
+  }, [session]);
 
   // 헤더에 보여줄 오늘의 업무량 (연락 대기 · 연계 사후관리) — 기록 저장·동기화 시 즉시 재계산
   const { waitCount, followupCount } = useMemo(() => {
@@ -156,7 +174,7 @@ export default function CounselDesk() {
           {cloudState === null
             ? "공유 저장소 연결 확인 중…"
             : cloudState === "CLOUD"
-              ? "☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다."
+              ? "☁ 공유 저장소 연결됨 — 기록이 상담사 간에 공유됩니다. 다른 상담사가 방금 저장한 기록은 이 탭으로 돌아오거나 ↻ 새로고침을 누를 때 반영됩니다."
               : "⚠ 공유 저장소 미연결(네트워크·권한·설정 확인) — 지금 저장하는 기록은 이 브라우저에만 보관되며 다른 상담사에게 공유되지 않습니다."}{" "}
           {source === "CLOUD" && `(실측 응답 ${students.length}건${skipped ? ` · 형식 오류 제외 ${skipped}건` : ""})`}
           {source === "CLOUD" && recoStale && " ⚠ 추천활동 목록을 최신으로 받지 못해 추천은 기본 목록 기준입니다 — 새로고침해 주세요."}

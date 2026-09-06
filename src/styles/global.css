@@ -1028,6 +1028,12 @@ body {
   color: var(--muted);
   margin-bottom: 14px;
 }
+/* 재개 모달 — 누구의 진단인지 마스킹 표기 (2026-09-06 점검 ⑧) */
+.modal__who {
+  margin: 4px 0 2px;
+  font-weight: 700;
+  color: var(--navy);
+}
 .modal__actions {
   display: flex;
   gap: 8px;
@@ -1076,6 +1082,13 @@ body {
 @media (max-width: 480px) {
   .grid-2 {
     grid-template-columns: 1fr;
+  }
+  /* iOS Safari·인앱 브라우저는 16px 미만 입력창에 포커스하면 화면을 자동 확대하고 복귀하지 않는다 —
+     학생 입력창(14.08px)·학년 연도(13.6px)만 모바일 폭에서 16px로 (2026-09-06 점검 ⑨) */
+  .page .input,
+  .page select.input,
+  .page .grade-picker__year {
+    font-size: 16px;
   }
 }
 @media (max-width: 380px) {

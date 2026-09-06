@@ -290,6 +290,11 @@ async function cloudLogin(email: string, password: string): Promise<LoginResult 
     if (["auth/operation-not-allowed", "auth/configuration-not-found"].includes(code)) return null;
     if (email === MASTER_ID && code === "auth/user-not-found")
       return { ok: false, message: "마스터 계정이 아직 없습니다 — Firebase 콘솔 Authentication에서 먼저 생성해 주세요 (SETUP 가이드 3단계)." };
+    // 일시 차단·계정 중지까지 "비밀번호 틀림"으로 뭉개면 맞는 비밀번호로 계속 재시도해 차단이 길어진다 (2026-09-06 점검 ⑩)
+    if (code === "auth/too-many-requests")
+      return { ok: false, message: "로그인 시도가 많아 잠시 차단되었습니다. 몇 분 뒤 다시 시도하거나 \"비밀번호를 잊으셨나요?\"로 재설정 메일을 받아 주세요." };
+    if (code === "auth/user-disabled")
+      return { ok: false, message: "로그인이 중지된 계정입니다. 마스터 관리자에게 문의해 주세요." };
     return { ok: false, message: "아이디 또는 비밀번호가 올바르지 않습니다." };
   }
   const db = getDb();

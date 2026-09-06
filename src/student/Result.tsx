@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { saveResponseToCloud, type ResponsePayload } from "../lib/saveResponse";
 import { CLOUD_ENABLED } from "../lib/firebase";
-import { getUnscored, getCerts, gradeLabel } from "../lib/sessionState";
+import { getUnscored, getCerts, gradeLabel, normalizePhone, GRADE_PATTERN } from "../lib/sessionState";
 import { evaluate } from "../../lib/level_engine.js";
 import { findWeakAreas } from "../../lib/weak_area.js";
 import { resolveRecommendations } from "../../lib/recommendation_resolver.js";
@@ -135,11 +135,17 @@ export default function Result() {
   // 프로필은 영구 403이라 재시도가 절대 성공하지 못한다. 제출을 시도하지 말고 NO_PROFILE 안내로
   // 보낸다 (점검 STU-03). 조건은 규칙·설문 화면과 동일하게 — 결과지에서 뒤로 가 학번을 잘못 고친
   // 뒤 "다음" 검증을 거치지 않고 돌아온 경우가 "네트워크 확인"으로 오안내되던 문제 (점검 S1).
+  // 휴대전화·학과·학년도 규칙과 같은 조건으로 검사한다 — 설문 "다음"을 거치지 않고 돌아온 경우 휴대전화가
+  // 비거나 형식이 깨진 채 제출되던 경로(빈 값은 규칙이 허용해 연락처 없는 응답이 조용히 저장됨) (2026-09-06 점검 ④)
   const profileOk = Boolean(
     profile &&
       /^[A-Za-z0-9]{4,20}$/.test(profile.student_id.trim()) &&
       profile.name.trim().length >= 1 &&
-      profile.name.trim().length <= 30
+      profile.name.trim().length <= 30 &&
+      profile.dept.trim().length >= 1 &&
+      profile.dept.trim().length <= 60 &&
+      GRADE_PATTERN.test(profile.grade) &&
+      /^01[0-9]-[0-9]{3,4}-[0-9]{4}$/.test(normalizePhone(profile.phone))
   );
   const analysisReady = analysis !== null;
 
@@ -159,6 +165,11 @@ export default function Result() {
     }
     if (submitState === "OFF") {
       window.alert("시범(로컬) 모드라 신청이 서버로 전달되지 않습니다. 잡카페(본관 1층)로 직접 방문하거나 연락해 주세요.");
+      return;
+    }
+    // 아직 제출 중이면 "연락드립니다"를 확정하지 않는다 — 직후 제출이 실패해도 학생은 이미 안내를 듣고 떠났다 (점검 ⑤)
+    if (submitState === "SAVING") {
+      window.alert("상담 신청을 기록했습니다. 응답 제출이 끝나면 신청도 함께 전달됩니다 — 화면 아래 \"응답이 안전하게 제출되었습니다\" 표시를 확인해 주세요.");
       return;
     }
     window.alert(
@@ -286,7 +297,14 @@ export default function Result() {
           <h1 className="level-card__title">{templates.levels[String(r.level)].title}</h1>
           {isNonEmployment && <p className="level-card__subtitle">{tpl.title}</p>}
           <p className="level-card__headline">{tpl.headline}</p>
-          <p className="level-card__body">{tpl.body}</p>
+          {/* Level 3 본문의 "학교의 취업지원 활용에도 적극적이에요"는 엔진이 학교지원 응답과 무관하게 L3을 판정하므로
+              "혼자 준비하겠다"·"필요할 때"로 답한 학생에게 모순이었다 (2026-09-06 점검 ⑥). 템플릿(§12-07 미확정)은
+              그대로 두고, 해당 응답일 때만 그 절을 응답 무관 서술로 바꿔 보여 준다. */}
+          <p className="level-card__body">
+            {!isNonEmployment && r.level === 3 && survey.school_support !== "ACTIVE"
+              ? tpl.body.replace("취업 희망시기가 가깝고 학교의 취업지원 활용에도 적극적이에요.", "취업 희망시기가 가깝고 취업 의지도 분명해요.")
+              : tpl.body}
+          </p>
           {profile && (
             <p className="level-card__who">
               {profile.name} ({profile.dept} {gradeLabel(profile.grade)})
@@ -389,6 +407,7 @@ export default function Result() {
             <p>
               네트워크 상태를 확인한 뒤 다시 시도해 주세요. 제출이 완료되기 전에는 응답이 이 기기에만
               저장되어 있어, 이 화면을 닫으면 학교에 전달되지 않습니다.
+              {counselReq && <strong> 상담 신청도 아직 전달되지 않았습니다.</strong>}
             </p>
             <button className="btn btn--primary" onClick={() => setRetryTick((t) => t + 1)}>
               다시 제출하기
@@ -400,8 +419,9 @@ export default function Result() {
             <strong>⚠ 학교 시스템이 제출을 받지 않았습니다</strong>
             <p>
               네트워크 문제가 아니라 입력 내용이 제출 조건에 맞지 않을 때 나타납니다. 설문으로 돌아가
-              학번(영문·숫자 4~20자)과 성명을 확인한 뒤 다시 결과를 확인해 주세요. 반복되면 잡카페(본관 1층)에
-              문의해 주세요.
+              학번(영문·숫자 4~20자)·성명·학과·휴대전화(010-0000-0000 형식)를 확인하고 "다음"을 눌러 다시 결과를
+              확인해 주세요. 반복되면 잡카페(본관 1층)에 문의해 주세요.
+              {counselReq && <strong> 상담 신청도 아직 전달되지 않았습니다.</strong>}
             </p>
             <div className="actions">
               <button className="btn btn--primary" onClick={() => navigate("/survey")}>
@@ -417,8 +437,10 @@ export default function Result() {
           <section className="card submit-fail">
             <strong>⚠ 학생 정보가 없거나 형식이 맞지 않아 제출할 수 없습니다</strong>
             <p>
-              학번은 영문·숫자 4~20자, 성명은 1~30자여야 합니다. 설문으로 돌아가 기본 정보를 확인해 주세요.
-              기본 정보가 아예 없다면 "다시 진단하기"로 처음부터 진행해 주세요.
+              학번은 영문·숫자 4~20자, 성명은 1~30자, 학과·학년·휴대전화(010-0000-0000 형식)는 모두 입력되어야 합니다.
+              설문으로 돌아가 기본 정보를 확인하고 "다음"을 눌러 주세요. 기본 정보가 아예 없다면 "다시 진단하기"로
+              처음부터 진행해 주세요.
+              {counselReq && <strong> 상담 신청도 아직 전달되지 않았습니다.</strong>}
             </p>
             <button className="btn btn--primary" onClick={() => navigate("/survey")}>
               설문으로 돌아가 확인하기

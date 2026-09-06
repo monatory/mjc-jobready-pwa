@@ -87,7 +87,24 @@ export default function AgencyManager() {
 
   return (
     <>
-      <h1 className="admin__title">연계기관·취업처 관리</h1>
+      <h1 className="admin__title">
+        연계기관·취업처 관리{" "}
+        {/* 다른 상담사가 등록한 기관은 이 화면에 새로고침 수단이 없어 명단 탭을 거쳐야만 보였다 (2026-09-06 점검 ①) */}
+        <button
+          className="btn btn--ghost btn--sm"
+          disabled={busy}
+          title="다른 상담사가 등록·수정한 기관을 다시 불러옵니다"
+          onClick={() => {
+            setBusy(true);
+            void pullShared().then(() => {
+              setAgencies(loadAgencies());
+              setBusy(false);
+            });
+          }}
+        >
+          ↻ 새로고침
+        </button>
+      </h1>
       <p className="muted">
         외부기관 연계와 취업처 기록에서 참조하는 공유 등록부입니다. 학생을 어느 기관에 보냈는지
         추적하려면 기관명·연락처·담당자·사업명을 등록해 두세요. (상담사 전용 — 담당자 화면에는 없음)
